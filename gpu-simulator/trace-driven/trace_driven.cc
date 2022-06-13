@@ -509,8 +509,10 @@ void trace_shader_core_ctx::get_pdom_stack_top_info(unsigned warp_id,
                                                     unsigned *pc,
                                                     unsigned *rpc) {
   // In trace-driven mode, we assume no control hazard
-  *pc = pI->pc;
-  *rpc = pI->pc;
+  // if (pI) {
+    *pc = pI->pc;
+    *rpc = pI->pc;
+  // }
 }
 
 const active_mask_t &trace_shader_core_ctx::get_active_mask(
@@ -627,7 +629,9 @@ void trace_shader_core_ctx::func_exec_inst(warp_inst_t &inst) {
   if (m_trace_warp->trace_done()) {
     for (unsigned t = 0; t < m_warp_size; t++) {
       if (m_warp[inst.warp_id()]->m_active_threads.test(t)) {
-        m_warp[inst.warp_id()]->set_completed(t);
+        if (inst.active(t)) {
+          m_warp[inst.warp_id()]->set_completed(t);
+        }
       }
     }
     m_trace_warp->ibuffer_flush();
