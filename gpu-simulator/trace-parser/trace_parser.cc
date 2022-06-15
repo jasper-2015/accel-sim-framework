@@ -340,6 +340,10 @@ kernel_trace_t *trace_parser::parse_kernel_info(
         const size_t equal_idx = line.find('=');
         ss.str(line.substr(equal_idx + 1));
         ss >> std::hex >> kernel_info->local_base_addr;
+      } else if (string1 == "appwin") {
+        sscanf(line.c_str(), "-appwin =%d", &kernel_info->appwin);
+      } else if (string1 == "kerwin") {
+        sscanf(line.c_str(), "-kerwin =%d", &kernel_info->kerwin);
       }
       std::cout << line << std::endl;
       continue;

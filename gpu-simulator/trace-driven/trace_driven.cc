@@ -90,12 +90,15 @@ trace_kernel_info_t::trace_kernel_info_t(dim3 gridDim, dim3 blockDim,
                                          trace_function_info *m_function_info,
                                          trace_parser *parser,
                                          class trace_config *config,
-                                         kernel_trace_t *kernel_trace_info)
+                                         kernel_trace_t *kernel_trace_info,
+                                         unsigned int appwin, unsigned int kerwin)
     : kernel_info_t(gridDim, blockDim, m_function_info) {
   m_parser = parser;
   m_tconfig = config;
   m_kernel_trace_info = kernel_trace_info;
   m_was_launched = false;
+  m_appwin = appwin;
+  m_kerwin = kerwin;
 
   // resolve the binary version
   if (kernel_trace_info->binary_verion == AMPERE_RTX_BINART_VERSION ||
@@ -413,6 +416,11 @@ void trace_config::reg_options(option_parser_t opp) {
                          "Opcode latencies and initiation for tensor in trace "
                          "driven mode <latency,initiation>",
                          "4,1");
+  option_parser_register(opp, "-reg_win_mode",
+                         OPT_UINT32, &reg_win_mode,
+                         "Reg window mode "
+                         "1 for app_win, 2 for ker_win, 3 for fun_win",
+                         "0");
 
   for (unsigned j = 0; j < SPECIALIZED_UNIT_NUM; ++j) {
     std::stringstream ss;
@@ -638,4 +646,40 @@ void trace_shader_core_ctx::issue_warp(register_set &warp,
   // delete warp_inst_t class here, it is not required anymore by gpgpu-sim
   // after issue
   delete pI;
+}
+
+bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, unsigned warp_id) {
+  // Choose appwin or regwin?
+  const trace_warp_inst_t *pI = static_cast<const trace_warp_inst_t *>(next_inst);
+  trace_shd_warp_t *m_trace_warp =
+    static_cast<trace_shd_warp_t *>(m_warp[warp_id]);
+  trace_kernel_info_t *kernel_info = static_cast<trace_kernel_info_t *>(m_trace_warp->get_kernel_info());
+  unsigned int reg_win = 0;
+
+  if (kernel_info->m_tconfig->reg_win_mode == 1) {
+    reg_win = kernel_info->m_appwin;
+  } else if (kernel_info->m_tconfig->reg_win_mode == 2) {
+    reg_win = kernel_info->m_kerwin;
+  } else {
+    return true;
+  }
+
+  if (pI->m_opcode == OP_CALL) {
+    if (m_free_reg_number >= reg_win) {
+      m_free_reg_number -= reg_win;
+      printf("Reg call %d %d!\n", m_free_reg_number, reg_win);
+      return true;
+    } else {
+      printf("Reg is full!\n");
+      return false;
+    }
+  } else if (pI->m_opcode == OP_RET) {
+    m_free_reg_number += reg_win;
+    printf("Reg return %d %d!\n", m_free_reg_number, reg_win);
+    return true;
+  } else {
+    return true;
+  }
+  // Will never calls this
+  return false;
 }

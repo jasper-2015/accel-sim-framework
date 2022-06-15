@@ -90,6 +90,8 @@ struct kernel_trace_t {
   std::string nvbit_verion;
   unsigned long long shmem_base_addr;
   unsigned long long local_base_addr;
+  unsigned appwin;
+  unsigned kerwin;
   // Reference to open filestream
   std::ifstream *ifs;
 };

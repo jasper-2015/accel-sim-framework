@@ -76,7 +76,7 @@ class trace_warp_inst_t : public warp_inst_t {
       const class trace_config *tconfig,
       const class kernel_trace_t *kernel_trace_info);
 
- private:
+
   unsigned m_opcode;
 };
 
@@ -85,7 +85,8 @@ class trace_kernel_info_t : public kernel_info_t {
   trace_kernel_info_t(dim3 gridDim, dim3 blockDim,
                       trace_function_info *m_function_info,
                       trace_parser *parser, class trace_config *config,
-                      kernel_trace_t *kernel_trace_info);
+                      kernel_trace_t *kernel_trace_info,
+                      unsigned int appwin, unsigned int kerwin);
 
   void get_next_threadblock_traces(
       std::vector<std::vector<inst_trace_t> *> threadblock_traces);
@@ -99,9 +100,10 @@ class trace_kernel_info_t : public kernel_info_t {
   bool was_launched() { return m_was_launched; }
 
   void set_launched() { m_was_launched = true; }
-
- private:
+  unsigned m_appwin;
+  unsigned m_kerwin;
   trace_config *m_tconfig;
+ private:
   const std::unordered_map<std::string, OpcodeChar> *OpcodeMap;
   trace_parser *m_parser;
   kernel_trace_t *m_kernel_trace_info;
@@ -119,6 +121,8 @@ class trace_config {
   void parse_config();
   void reg_options(option_parser_t opp);
   char *get_traces_filename() { return g_traces_filename; }
+
+  unsigned reg_win_mode;
 
  private:
   unsigned int_latency, fp_latency, dp_latency, sfu_latency, tensor_latency;
@@ -196,6 +200,8 @@ class trace_shader_core_ctx : public shader_core_ctx {
     create_shd_warp();
     create_schedulers();
     create_exec_pipeline();
+    // TODO: need to split into subcore
+    m_free_reg_number = 16384 * 4;
   }
 
   virtual void checkExecutionStatusAndUpdate(warp_inst_t &inst, unsigned t,
@@ -220,7 +226,9 @@ class trace_shader_core_ctx : public shader_core_ctx {
   virtual void issue_warp(register_set &warp, const warp_inst_t *pI,
                           const active_mask_t &active_mask, unsigned warp_id,
                           unsigned sch_id);
+  virtual bool has_register_space(const warp_inst_t *pI, unsigned warp_id);
 
+  unsigned int m_free_reg_number;
  private:
   void init_traces(unsigned start_warp, unsigned end_warp,
                    kernel_info_t &kernel);
