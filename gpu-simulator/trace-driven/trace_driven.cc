@@ -637,9 +637,7 @@ void trace_shader_core_ctx::func_exec_inst(warp_inst_t &inst) {
   if (m_trace_warp->trace_done()) {
     for (unsigned t = 0; t < m_warp_size; t++) {
       if (m_warp[inst.warp_id()]->m_active_threads.test(t)) {
-        if (inst.active(t)) {
-          m_warp[inst.warp_id()]->set_completed(t);
-        }
+        m_warp[inst.warp_id()]->set_completed(t);
       }
     }
     m_trace_warp->ibuffer_flush();
@@ -665,11 +663,12 @@ bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, uns
     static_cast<trace_shd_warp_t *>(m_warp[warp_id]);
   trace_kernel_info_t *kernel_info = static_cast<trace_kernel_info_t *>(m_trace_warp->get_kernel_info());
   unsigned int reg_win = 0;
+  unsigned int output_reg = 16;
 
   if (kernel_info->m_tconfig->reg_win_mode == 1) {
-    reg_win = kernel_info->m_appwin;
+    reg_win = kernel_info->m_appwin + output_reg;
   } else if (kernel_info->m_tconfig->reg_win_mode == 2) {
-    reg_win = kernel_info->m_kerwin;
+    reg_win = kernel_info->m_kerwin + output_reg;
   } else {
     return true;
   }
