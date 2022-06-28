@@ -207,6 +207,10 @@ bool inst_trace_t::parse_from_string(std::string trace,
       }
       memadd_info->base_delta_decompress(base_address, deltas, mask_bits);
     }
+  } else if (opcode == "CALL.ABS.NOINC" && reg_dsts_num == 0) {
+    ss >> std::dec >> funwin;
+  } else if (opcode == "RET.ABS.NODEC" && reg_dsts_num == 1) {
+    ss >> std::dec >> funwin;
   }
   // Finish Parsing
 

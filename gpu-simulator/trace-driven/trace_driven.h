@@ -62,11 +62,13 @@ class trace_warp_inst_t : public warp_inst_t {
  public:
   trace_warp_inst_t() {
     m_opcode = 0;
+    m_funwin = 0;
     should_do_atomic = false;
   }
 
   trace_warp_inst_t(const class core_config *config) : warp_inst_t(config) {
     m_opcode = 0;
+    m_funwin = 0;
     should_do_atomic = false;
   }
 
@@ -78,6 +80,7 @@ class trace_warp_inst_t : public warp_inst_t {
 
 
   unsigned m_opcode;
+  unsigned m_funwin;
 };
 
 class trace_kernel_info_t : public kernel_info_t {

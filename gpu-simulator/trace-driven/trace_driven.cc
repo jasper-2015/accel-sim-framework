@@ -376,6 +376,12 @@ bool trace_warp_inst_t::parse_from_trace_struct(
       initiation_interval =
           initiation_interval / 2;  // FP16 has 2X throughput than FP32
       break;
+    case OP_CALL:
+      m_funwin = trace.funwin;
+      break;
+    case OP_RET:
+      m_funwin = trace.funwin;
+      break;
     default:
       break;
   }
@@ -669,6 +675,14 @@ bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, uns
     reg_win = kernel_info->m_appwin + output_reg;
   } else if (kernel_info->m_tconfig->reg_win_mode == 2) {
     reg_win = kernel_info->m_kerwin + output_reg;
+  } else if (kernel_info->m_tconfig->reg_win_mode == 3) {
+    if (pI->m_opcode == OP_CALL) {
+      reg_win = pI->m_funwin + output_reg;
+    } else if (pI->m_opcode == OP_RET) {
+      reg_win = pI->m_funwin + output_reg;
+    } else {
+      return true;
+    }
   } else {
     return true;
   }
