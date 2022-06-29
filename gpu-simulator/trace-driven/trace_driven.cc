@@ -616,9 +616,9 @@ void trace_shader_core_ctx::checkExecutionStatusAndUpdate(warp_inst_t &inst,
     inst.set_addr(t, (new_addr_type *)localaddrs, num_addrs);
   }
 
-  // if (inst.op == EXIT_OPS) {
-  //   m_warp[inst.warp_id()]->set_completed(t);
-  // }
+  if (inst.op == EXIT_OPS) {
+    m_warp[inst.warp_id()]->set_completed(t);
+  }
 }
 
 void trace_shader_core_ctx::func_exec_inst(warp_inst_t &inst) {
@@ -639,13 +639,7 @@ void trace_shader_core_ctx::func_exec_inst(warp_inst_t &inst) {
 
   trace_shd_warp_t *m_trace_warp =
       static_cast<trace_shd_warp_t *>(m_warp[inst.warp_id()]);
-    // if (m_trace_warp->trace_done() && m_trace_warp->functional_done()) {
-  if (m_trace_warp->trace_done()) {
-    for (unsigned t = 0; t < m_warp_size; t++) {
-      if (m_warp[inst.warp_id()]->m_active_threads.test(t)) {
-        m_warp[inst.warp_id()]->set_completed(t);
-      }
-    }
+  if (m_trace_warp->trace_done() && m_trace_warp->functional_done()) {
     m_trace_warp->ibuffer_flush();
     m_barriers.warp_exit(inst.warp_id());
   }
@@ -662,7 +656,7 @@ void trace_shader_core_ctx::issue_warp(register_set &warp,
   delete pI;
 }
 
-bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, unsigned warp_id) {
+bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, unsigned warp_id, unsigned long long curr_cycle) {
   // Choose appwin or regwin?
   const trace_warp_inst_t *pI = static_cast<const trace_warp_inst_t *>(next_inst);
   trace_shd_warp_t *m_trace_warp =
@@ -690,15 +684,18 @@ bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, uns
   if (pI->m_opcode == OP_CALL) {
     if (m_free_reg_number >= reg_win) {
       m_free_reg_number -= reg_win;
-      printf("Reg call %d %d!\n", m_free_reg_number, reg_win);
+      // printf("Reg call %d %d!\n", m_free_reg_number, reg_win);
+      printf("Reserve %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
       return true;
     } else {
-      printf("Reg is full!\n");
-      return false;
+      // printf("Reg is full!\n");
+      // return false;
+      return true;
     }
   } else if (pI->m_opcode == OP_RET) {
     m_free_reg_number += reg_win;
-    printf("Reg return %d %d!\n", m_free_reg_number, reg_win);
+    // printf("Reg return %d %d!\n", m_free_reg_number, reg_win);
+    printf("Release %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
     return true;
   } else {
     return true;
