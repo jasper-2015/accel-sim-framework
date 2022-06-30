@@ -209,8 +209,10 @@ bool inst_trace_t::parse_from_string(std::string trace,
     }
   } else if (opcode == "CALL.ABS.NOINC" && reg_dsts_num == 0) {
     ss >> std::dec >> funwin;
+    ss >> std::dec >> depwin;
   } else if (opcode == "RET.ABS.NODEC" && reg_dsts_num == 1) {
     ss >> std::dec >> funwin;
+    ss >> std::dec >> depwin;
   }
   // Finish Parsing
 

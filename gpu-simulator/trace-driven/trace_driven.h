@@ -63,12 +63,14 @@ class trace_warp_inst_t : public warp_inst_t {
   trace_warp_inst_t() {
     m_opcode = 0;
     m_funwin = 0;
+    m_depwin = 0;
     should_do_atomic = false;
   }
 
   trace_warp_inst_t(const class core_config *config) : warp_inst_t(config) {
     m_opcode = 0;
     m_funwin = 0;
+    m_depwin = 0;
     should_do_atomic = false;
   }
 
@@ -81,6 +83,7 @@ class trace_warp_inst_t : public warp_inst_t {
 
   unsigned m_opcode;
   unsigned m_funwin;
+  unsigned m_depwin;
 };
 
 class trace_kernel_info_t : public kernel_info_t {
@@ -192,6 +195,7 @@ class trace_simt_core_cluster : public simt_core_cluster {
 
 class trace_shader_core_ctx : public shader_core_ctx {
  public:
+  virtual bool can_issue_1block(kernel_info_t &kernel);
   trace_shader_core_ctx(class gpgpu_sim *gpu, class simt_core_cluster *cluster,
                         unsigned shader_id, unsigned tpc_id,
                         const shader_core_config *config,
@@ -206,6 +210,7 @@ class trace_shader_core_ctx : public shader_core_ctx {
     // TODO: need to split into subcore
     m_free_reg_number = 16384 * 4;
     sid = shader_id;
+    m_depwin = 0;
   }
 
   virtual void checkExecutionStatusAndUpdate(warp_inst_t &inst, unsigned t,
@@ -235,6 +240,7 @@ class trace_shader_core_ctx : public shader_core_ctx {
   unsigned get_sid() { return sid; }
 
   unsigned int m_free_reg_number;
+  unsigned m_depwin;
  private:
   void init_traces(unsigned start_warp, unsigned end_warp,
                    kernel_info_t &kernel);

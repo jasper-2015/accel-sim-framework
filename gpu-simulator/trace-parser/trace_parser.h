@@ -58,6 +58,7 @@ struct inst_trace_t {
   unsigned reg_src[MAX_SRC];
   inst_memadd_info_t *memadd_info;
   unsigned funwin;
+  unsigned depwin;
 
   bool parse_from_string(std::string trace, unsigned tracer_version);
 

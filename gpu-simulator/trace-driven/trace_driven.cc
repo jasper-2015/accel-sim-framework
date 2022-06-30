@@ -378,9 +378,11 @@ bool trace_warp_inst_t::parse_from_trace_struct(
       break;
     case OP_CALL:
       m_funwin = trace.funwin;
+      m_depwin = trace.depwin;
       break;
     case OP_RET:
       m_funwin = trace.funwin;
+      m_depwin = trace.depwin;
       break;
     default:
       break;
@@ -536,6 +538,23 @@ const active_mask_t &trace_shader_core_ctx::get_active_mask(
   return pI->get_active_mask();
 }
 
+bool trace_shader_core_ctx::can_issue_1block(kernel_info_t &kernel) {
+  // Jin: concurrent kernels on one SM
+  printf("Call trace can_issue_1block!");
+  if (m_config->gpgpu_concurrent_kernel_sm) {
+    if (m_config->max_cta(kernel) < 1) return false;
+
+    return occupy_shader_resource_1block(kernel, false);
+  } else {
+    trace_kernel_info_t &trace_kernel = static_cast<trace_kernel_info_t &>(kernel);
+    if (trace_kernel.m_tconfig->reg_win_mode == 4) {
+      return (get_n_active_cta() < m_config->max_cta(kernel) && (get_n_active_cta() * m_depwin <= m_free_reg_number));
+    } else {
+      return (get_n_active_cta() < m_config->max_cta(kernel));
+    }
+  }
+}
+
 unsigned trace_shader_core_ctx::sim_init_thread(
     kernel_info_t &kernel, ptx_thread_info **thread_info, int sid, unsigned tid,
     unsigned threads_left, unsigned num_threads, core_t *core,
@@ -677,28 +696,44 @@ bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, uns
     } else {
       return true;
     }
+  } else if (kernel_info->m_tconfig->reg_win_mode == 4) {
+    if (pI->m_opcode == OP_CALL) {
+      reg_win = pI->m_funwin + output_reg;
+    } else if (pI->m_opcode == OP_RET) {
+      reg_win = pI->m_funwin + output_reg;
+    } else {
+      return true;
+    }
   } else {
     return true;
   }
 
-  if (pI->m_opcode == OP_CALL) {
-    if (m_free_reg_number >= reg_win) {
-      m_free_reg_number -= reg_win;
-      // printf("Reg call %d %d!\n", m_free_reg_number, reg_win);
-      printf("Reserve %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
-      return true;
-    } else {
-      // printf("Reg is full!\n");
-      // return false;
-      return true;
-    }
-  } else if (pI->m_opcode == OP_RET) {
-    m_free_reg_number += reg_win;
-    // printf("Reg return %d %d!\n", m_free_reg_number, reg_win);
-    printf("Release %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
+  if (kernel_info->m_tconfig->reg_win_mode == 4) {
+    // Just let it go, we need to block issue blocks but not warp
+    m_depwin = pI->m_depwin;
     return true;
   } else {
-    return true;
+    if (pI->m_opcode == OP_CALL) {
+      if (m_free_reg_number >= reg_win) {
+        m_free_reg_number -= reg_win;
+        // printf("Reg call %d %d!\n", m_free_reg_number, reg_win);
+        printf("Reserve %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
+        return true;
+      } else {
+        printf("Reg is full!\n");
+        return false;
+        // return true;
+      }
+    } else if (pI->m_opcode == OP_RET) {
+      m_free_reg_number += reg_win;
+      // printf("Reg return %d %d!\n", m_free_reg_number, reg_win);
+      printf("Release %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
+      return true;
+    } else {
+      return true;
+    }
+    // Will never calls this
+    return false;
   }
   // Will never calls this
   return false;
