@@ -205,6 +205,7 @@ class trace_shader_core_ctx : public shader_core_ctx {
     create_exec_pipeline();
     // TODO: need to split into subcore
     m_free_reg_number = 16384 * 4;
+    sid = shader_id;
   }
 
   virtual void checkExecutionStatusAndUpdate(warp_inst_t &inst, unsigned t,
@@ -229,12 +230,16 @@ class trace_shader_core_ctx : public shader_core_ctx {
   virtual void issue_warp(register_set &warp, const warp_inst_t *pI,
                           const active_mask_t &active_mask, unsigned warp_id,
                           unsigned sch_id);
-  virtual bool has_register_space(const warp_inst_t *pI, unsigned warp_id);
+  virtual bool has_register_space(const warp_inst_t *pI, unsigned warp_id, unsigned long long curr_cycle);
+
+  unsigned get_sid() { return sid; }
 
   unsigned int m_free_reg_number;
  private:
   void init_traces(unsigned start_warp, unsigned end_warp,
                    kernel_info_t &kernel);
+
+  unsigned sid;
 };
 
 types_of_operands get_oprnd_type(op_type op, special_ops sp_op);
