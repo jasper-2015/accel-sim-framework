@@ -379,6 +379,7 @@ bool trace_warp_inst_t::parse_from_trace_struct(
     case OP_CALL:
       m_funwin = trace.funwin;
       m_depwin = trace.depwin;
+      m_is_relo_call = trace.is_relo_call;
       break;
     case OP_RET:
       m_funwin = trace.funwin;
@@ -540,7 +541,7 @@ const active_mask_t &trace_shader_core_ctx::get_active_mask(
 
 bool trace_shader_core_ctx::can_issue_1block(kernel_info_t &kernel) {
   // Jin: concurrent kernels on one SM
-  printf("Call trace can_issue_1block!");
+
   if (m_config->gpgpu_concurrent_kernel_sm) {
     if (m_config->max_cta(kernel) < 1) return false;
 
@@ -548,7 +549,8 @@ bool trace_shader_core_ctx::can_issue_1block(kernel_info_t &kernel) {
   } else {
     trace_kernel_info_t &trace_kernel = static_cast<trace_kernel_info_t &>(kernel);
     if (trace_kernel.m_tconfig->reg_win_mode == 4) {
-      return (get_n_active_cta() < m_config->max_cta(kernel) && (get_n_active_cta() * m_depwin <= m_free_reg_number));
+      // Use block scheduling or not is not decided
+      return (get_n_active_cta() < m_config->max_cta(kernel));
     } else {
       return (get_n_active_cta() < m_config->max_cta(kernel));
     }
@@ -689,7 +691,7 @@ bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, uns
   } else if (kernel_info->m_tconfig->reg_win_mode == 2) {
     reg_win = kernel_info->m_kerwin + output_reg;
   } else if (kernel_info->m_tconfig->reg_win_mode == 3) {
-    if (pI->m_opcode == OP_CALL) {
+    if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
       reg_win = pI->m_funwin + output_reg;
     } else if (pI->m_opcode == OP_RET) {
       reg_win = pI->m_funwin + output_reg;
@@ -697,7 +699,7 @@ bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, uns
       return true;
     }
   } else if (kernel_info->m_tconfig->reg_win_mode == 4) {
-    if (pI->m_opcode == OP_CALL) {
+    if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
       reg_win = pI->m_funwin + output_reg;
     } else if (pI->m_opcode == OP_RET) {
       reg_win = pI->m_funwin + output_reg;
@@ -713,14 +715,14 @@ bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, uns
     m_depwin = pI->m_depwin;
     return true;
   } else {
-    if (pI->m_opcode == OP_CALL) {
+    if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
       if (m_free_reg_number >= reg_win) {
         m_free_reg_number -= reg_win;
         // printf("Reg call %d %d!\n", m_free_reg_number, reg_win);
         printf("Reserve %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
         return true;
       } else {
-        printf("Reg is full!\n");
+        printf("Full reserve %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
         return false;
         // return true;
       }

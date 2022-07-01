@@ -59,6 +59,7 @@ struct inst_trace_t {
   inst_memadd_info_t *memadd_info;
   unsigned funwin;
   unsigned depwin;
+  bool is_relo_call;
 
   bool parse_from_string(std::string trace, unsigned tracer_version);
 

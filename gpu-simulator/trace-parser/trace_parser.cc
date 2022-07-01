@@ -28,7 +28,7 @@ void split(const std::string &str, std::vector<std::string> &cont,
   }
 }
 
-inst_trace_t::inst_trace_t() { memadd_info = NULL; }
+inst_trace_t::inst_trace_t() { memadd_info = NULL; funwin = 0; is_relo_call = false;}
 
 inst_trace_t::~inst_trace_t() {
   if (memadd_info != NULL) delete memadd_info;
@@ -38,6 +38,8 @@ inst_trace_t::inst_trace_t(const inst_trace_t &b) {
   if (memadd_info != NULL) {
     memadd_info = new inst_memadd_info_t();
     memadd_info = b.memadd_info;
+    funwin = 0;
+    is_relo_call = false;
   }
 }
 
@@ -210,6 +212,7 @@ bool inst_trace_t::parse_from_string(std::string trace,
   } else if (opcode == "CALL.ABS.NOINC" && reg_dsts_num == 0) {
     ss >> std::dec >> funwin;
     ss >> std::dec >> depwin;
+    is_relo_call = true;
   } else if (opcode == "RET.ABS.NODEC" && reg_dsts_num == 1) {
     ss >> std::dec >> funwin;
     ss >> std::dec >> depwin;

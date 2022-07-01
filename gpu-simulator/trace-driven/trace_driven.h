@@ -64,6 +64,7 @@ class trace_warp_inst_t : public warp_inst_t {
     m_opcode = 0;
     m_funwin = 0;
     m_depwin = 0;
+    m_is_relo_call = false;
     should_do_atomic = false;
   }
 
@@ -71,6 +72,7 @@ class trace_warp_inst_t : public warp_inst_t {
     m_opcode = 0;
     m_funwin = 0;
     m_depwin = 0;
+    m_is_relo_call = false;
     should_do_atomic = false;
   }
 
@@ -84,6 +86,7 @@ class trace_warp_inst_t : public warp_inst_t {
   unsigned m_opcode;
   unsigned m_funwin;
   unsigned m_depwin;
+  bool m_is_relo_call;
 };
 
 class trace_kernel_info_t : public kernel_info_t {
@@ -208,7 +211,7 @@ class trace_shader_core_ctx : public shader_core_ctx {
     create_schedulers();
     create_exec_pipeline();
     // TODO: need to split into subcore
-    m_free_reg_number = 16384 * 4;
+    m_free_reg_number = 512 * 4;
     sid = shader_id;
     m_depwin = 0;
   }
