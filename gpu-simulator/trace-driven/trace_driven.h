@@ -214,6 +214,15 @@ class trace_shader_core_ctx : public shader_core_ctx {
     m_free_reg_number = 512 * 4;
     sid = shader_id;
     m_depwin = 0;
+    m_dep_table.resize(m_config->max_warps_per_shader);
+    for (unsigned k = 0; k < m_config->max_warps_per_shader; ++k) {
+      // 0 for if allowed to issue, 1 for depth window, 2 for waiting for barriers
+      m_dep_table[k].resize(3);
+      m_dep_table[k][0] = 0;
+      m_dep_table[k][1] = 0;
+      // not waiting for barriers, fine to go, wait for barriers, not to go
+      m_dep_table[k][2] = 1;
+    }
   }
 
   virtual void checkExecutionStatusAndUpdate(warp_inst_t &inst, unsigned t,
@@ -244,6 +253,9 @@ class trace_shader_core_ctx : public shader_core_ctx {
 
   unsigned int m_free_reg_number;
   unsigned m_depwin;
+
+  std::vector<std::vector<int> > m_dep_table;
+
  private:
   void init_traces(unsigned start_warp, unsigned end_warp,
                    kernel_info_t &kernel);

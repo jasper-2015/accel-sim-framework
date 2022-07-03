@@ -609,6 +609,9 @@ void trace_shader_core_ctx::init_traces(unsigned start_warp, unsigned end_warp,
     trace_shd_warp_t *m_trace_warp = static_cast<trace_shd_warp_t *>(m_warp[i]);
     m_trace_warp->clear();
     threadblock_traces.push_back(&(m_trace_warp->warp_traces));
+    m_dep_table[i][0] = 1;
+    m_dep_table[i][1] = 0;
+    m_dep_table[i][2] = 1;
   }
   trace_kernel_info_t &trace_kernel =
       static_cast<trace_kernel_info_t &>(kernel);
@@ -663,6 +666,9 @@ void trace_shader_core_ctx::func_exec_inst(warp_inst_t &inst) {
   if (m_trace_warp->trace_done() && m_trace_warp->functional_done()) {
     m_trace_warp->ibuffer_flush();
     m_barriers.warp_exit(inst.warp_id());
+    m_dep_table[inst.warp_id()][0] = 0;
+    m_dep_table[inst.warp_id()][1] = 0;
+    m_dep_table[inst.warp_id()][2] = 1;
   }
 }
 
@@ -711,9 +717,37 @@ bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, uns
   }
 
   if (kernel_info->m_tconfig->reg_win_mode == 4) {
-    // Just let it go, we need to block issue blocks but not warp
-    m_depwin = pI->m_depwin;
-    return true;
+    if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
+      m_dep_table[warp_id][0] = 1;
+      m_dep_table[warp_id][1] = pI->m_depwin;
+      int sum = 0;
+      for (unsigned k = 0; k < m_config->max_warps_per_shader; ++k) {
+        m_dep_table[warp_id][2] = m_warp[k]->waiting() ? 0 : 1;
+      }
+      for (unsigned k = 0; k < m_config->max_warps_per_shader; ++k) {
+        sum += m_dep_table[k][0] * m_dep_table[k][1] * m_dep_table[warp_id][2];
+      }
+      if (sum <= m_free_reg_number) {
+        // printf("%u not LIMITED by %u due to %u on SM %u\n", warp_id, m_free_reg_number, pI->m_depwin, get_sid());
+        m_free_reg_number -= reg_win;
+        // printf("Reg call %d %d!\n", m_free_reg_number, reg_win);
+        printf("Reserve %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
+        return true;
+      } else {
+        // printf("%u LIMITED by %u due to %u on SM %u\n", warp_id, m_free_reg_number, pI->m_depwin, get_sid());
+        m_dep_table[warp_id][0] = 0;
+        m_dep_table[warp_id][1] = 0;
+        printf("Full reserve %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
+        return false;
+      }
+    } else if (pI->m_opcode == OP_RET){
+      m_free_reg_number += reg_win;
+      // printf("Reg return %d %d!\n", m_free_reg_number, reg_win);
+      printf("Release %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
+      return true;
+    }
+    // Will never calls this
+    return false;
   } else {
     if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
       if (m_free_reg_number >= reg_win) {
