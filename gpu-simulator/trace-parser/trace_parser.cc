@@ -28,7 +28,7 @@ void split(const std::string &str, std::vector<std::string> &cont,
   }
 }
 
-inst_trace_t::inst_trace_t() { memadd_info = NULL; }
+inst_trace_t::inst_trace_t() { memadd_info = NULL; funwin = 0; is_relo_call = false;}
 
 inst_trace_t::~inst_trace_t() {
   if (memadd_info != NULL) delete memadd_info;
@@ -38,6 +38,8 @@ inst_trace_t::inst_trace_t(const inst_trace_t &b) {
   if (memadd_info != NULL) {
     memadd_info = new inst_memadd_info_t();
     memadd_info = b.memadd_info;
+    funwin = 0;
+    is_relo_call = false;
   }
 }
 
@@ -207,6 +209,13 @@ bool inst_trace_t::parse_from_string(std::string trace,
       }
       memadd_info->base_delta_decompress(base_address, deltas, mask_bits);
     }
+  } else if (opcode == "CALL.ABS.NOINC" && reg_dsts_num == 0) {
+    ss >> std::dec >> funwin;
+    ss >> std::dec >> depwin;
+    is_relo_call = true;
+  } else if (opcode == "RET.ABS.NODEC" && reg_dsts_num == 1) {
+    ss >> std::dec >> funwin;
+    ss >> std::dec >> depwin;
   }
   // Finish Parsing
 
@@ -340,6 +349,10 @@ kernel_trace_t *trace_parser::parse_kernel_info(
         const size_t equal_idx = line.find('=');
         ss.str(line.substr(equal_idx + 1));
         ss >> std::hex >> kernel_info->local_base_addr;
+      } else if (string1 == "appwin") {
+        sscanf(line.c_str(), "-appwin =%d", &kernel_info->appwin);
+      } else if (string1 == "kerwin") {
+        sscanf(line.c_str(), "-kerwin =%d", &kernel_info->kerwin);
       }
       std::cout << line << std::endl;
       continue;

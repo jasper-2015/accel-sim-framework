@@ -209,7 +209,7 @@ trace_kernel_info_t *create_kernel_info( kernel_trace_t* kernel_trace_info,
   function_info->set_name(kernel_trace_info->kernel_name.c_str());
   trace_kernel_info_t *kernel_info =
       new trace_kernel_info_t(gridDim, blockDim, function_info,
-    		  parser, config, kernel_trace_info);
+                 parser, config, kernel_trace_info, kernel_trace_info->appwin, kernel_trace_info->kerwin);
 
   return kernel_info;
 }

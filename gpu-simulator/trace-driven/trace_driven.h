@@ -62,11 +62,17 @@ class trace_warp_inst_t : public warp_inst_t {
  public:
   trace_warp_inst_t() {
     m_opcode = 0;
+    m_funwin = 0;
+    m_depwin = 0;
+    m_is_relo_call = false;
     should_do_atomic = false;
   }
 
   trace_warp_inst_t(const class core_config *config) : warp_inst_t(config) {
     m_opcode = 0;
+    m_funwin = 0;
+    m_depwin = 0;
+    m_is_relo_call = false;
     should_do_atomic = false;
   }
 
@@ -76,8 +82,11 @@ class trace_warp_inst_t : public warp_inst_t {
       const class trace_config *tconfig,
       const class kernel_trace_t *kernel_trace_info);
 
- private:
+
   unsigned m_opcode;
+  unsigned m_funwin;
+  unsigned m_depwin;
+  bool m_is_relo_call;
 };
 
 class trace_kernel_info_t : public kernel_info_t {
@@ -85,7 +94,8 @@ class trace_kernel_info_t : public kernel_info_t {
   trace_kernel_info_t(dim3 gridDim, dim3 blockDim,
                       trace_function_info *m_function_info,
                       trace_parser *parser, class trace_config *config,
-                      kernel_trace_t *kernel_trace_info);
+                      kernel_trace_t *kernel_trace_info,
+                      unsigned int appwin, unsigned int kerwin);
 
   void get_next_threadblock_traces(
       std::vector<std::vector<inst_trace_t> *> threadblock_traces);
@@ -99,9 +109,10 @@ class trace_kernel_info_t : public kernel_info_t {
   bool was_launched() { return m_was_launched; }
 
   void set_launched() { m_was_launched = true; }
-
- private:
+  unsigned m_appwin;
+  unsigned m_kerwin;
   trace_config *m_tconfig;
+ private:
   const std::unordered_map<std::string, OpcodeChar> *OpcodeMap;
   trace_parser *m_parser;
   kernel_trace_t *m_kernel_trace_info;
@@ -119,6 +130,8 @@ class trace_config {
   void parse_config();
   void reg_options(option_parser_t opp);
   char *get_traces_filename() { return g_traces_filename; }
+
+  unsigned reg_win_mode;
 
  private:
   unsigned int_latency, fp_latency, dp_latency, sfu_latency, tensor_latency;
@@ -185,6 +198,7 @@ class trace_simt_core_cluster : public simt_core_cluster {
 
 class trace_shader_core_ctx : public shader_core_ctx {
  public:
+  virtual bool can_issue_1block(kernel_info_t &kernel);
   trace_shader_core_ctx(class gpgpu_sim *gpu, class simt_core_cluster *cluster,
                         unsigned shader_id, unsigned tpc_id,
                         const shader_core_config *config,
@@ -196,6 +210,19 @@ class trace_shader_core_ctx : public shader_core_ctx {
     create_shd_warp();
     create_schedulers();
     create_exec_pipeline();
+    // TODO: need to split into subcore
+    m_free_reg_number = 512 * 4;
+    sid = shader_id;
+    m_depwin = 0;
+    m_dep_table.resize(m_config->max_warps_per_shader);
+    for (unsigned k = 0; k < m_config->max_warps_per_shader; ++k) {
+      // 0 for if allowed to issue, 1 for depth window, 2 for waiting for barriers
+      m_dep_table[k].resize(3);
+      m_dep_table[k][0] = 0;
+      m_dep_table[k][1] = 0;
+      // not waiting for barriers, fine to go, wait for barriers, not to go
+      m_dep_table[k][2] = 1;
+    }
   }
 
   virtual void checkExecutionStatusAndUpdate(warp_inst_t &inst, unsigned t,
@@ -220,10 +247,20 @@ class trace_shader_core_ctx : public shader_core_ctx {
   virtual void issue_warp(register_set &warp, const warp_inst_t *pI,
                           const active_mask_t &active_mask, unsigned warp_id,
                           unsigned sch_id);
+  virtual bool has_register_space(const warp_inst_t *pI, unsigned warp_id, unsigned long long curr_cycle);
+
+  unsigned get_sid() { return sid; }
+
+  unsigned int m_free_reg_number;
+  unsigned m_depwin;
+
+  std::vector<std::vector<int> > m_dep_table;
 
  private:
   void init_traces(unsigned start_warp, unsigned end_warp,
                    kernel_info_t &kernel);
+
+  unsigned sid;
 };
 
 types_of_operands get_oprnd_type(op_type op, special_ops sp_op);

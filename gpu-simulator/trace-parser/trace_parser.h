@@ -57,6 +57,9 @@ struct inst_trace_t {
   unsigned reg_srcs_num;
   unsigned reg_src[MAX_SRC];
   inst_memadd_info_t *memadd_info;
+  unsigned funwin;
+  unsigned depwin;
+  bool is_relo_call;
 
   bool parse_from_string(std::string trace, unsigned tracer_version);
 
@@ -90,6 +93,8 @@ struct kernel_trace_t {
   std::string nvbit_verion;
   unsigned long long shmem_base_addr;
   unsigned long long local_base_addr;
+  unsigned appwin;
+  unsigned kerwin;
   // Reference to open filestream
   std::ifstream *ifs;
 };

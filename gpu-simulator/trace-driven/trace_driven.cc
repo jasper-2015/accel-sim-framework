@@ -90,12 +90,15 @@ trace_kernel_info_t::trace_kernel_info_t(dim3 gridDim, dim3 blockDim,
                                          trace_function_info *m_function_info,
                                          trace_parser *parser,
                                          class trace_config *config,
-                                         kernel_trace_t *kernel_trace_info)
+                                         kernel_trace_t *kernel_trace_info,
+                                         unsigned int appwin, unsigned int kerwin)
     : kernel_info_t(gridDim, blockDim, m_function_info) {
   m_parser = parser;
   m_tconfig = config;
   m_kernel_trace_info = kernel_trace_info;
   m_was_launched = false;
+  m_appwin = appwin;
+  m_kerwin = kerwin;
 
   // resolve the binary version
   if (kernel_trace_info->binary_verion == AMPERE_RTX_BINART_VERSION ||
@@ -373,6 +376,15 @@ bool trace_warp_inst_t::parse_from_trace_struct(
       initiation_interval =
           initiation_interval / 2;  // FP16 has 2X throughput than FP32
       break;
+    case OP_CALL:
+      m_funwin = trace.funwin;
+      m_depwin = trace.depwin;
+      m_is_relo_call = trace.is_relo_call;
+      break;
+    case OP_RET:
+      m_funwin = trace.funwin;
+      m_depwin = trace.depwin;
+      break;
     default:
       break;
   }
@@ -413,6 +425,11 @@ void trace_config::reg_options(option_parser_t opp) {
                          "Opcode latencies and initiation for tensor in trace "
                          "driven mode <latency,initiation>",
                          "4,1");
+  option_parser_register(opp, "-reg_win_mode",
+                         OPT_UINT32, &reg_win_mode,
+                         "Reg window mode "
+                         "1 for app_win, 2 for ker_win, 3 for fun_win",
+                         "0");
 
   for (unsigned j = 0; j < SPECIALIZED_UNIT_NUM; ++j) {
     std::stringstream ss;
@@ -509,8 +526,10 @@ void trace_shader_core_ctx::get_pdom_stack_top_info(unsigned warp_id,
                                                     unsigned *pc,
                                                     unsigned *rpc) {
   // In trace-driven mode, we assume no control hazard
-  *pc = pI->pc;
-  *rpc = pI->pc;
+  // if (pI) {
+    *pc = pI->pc;
+    *rpc = pI->pc;
+  // }
 }
 
 const active_mask_t &trace_shader_core_ctx::get_active_mask(
@@ -518,6 +537,24 @@ const active_mask_t &trace_shader_core_ctx::get_active_mask(
   // For Trace-driven, the active mask already set in traces, so
   // just read it from the inst
   return pI->get_active_mask();
+}
+
+bool trace_shader_core_ctx::can_issue_1block(kernel_info_t &kernel) {
+  // Jin: concurrent kernels on one SM
+
+  if (m_config->gpgpu_concurrent_kernel_sm) {
+    if (m_config->max_cta(kernel) < 1) return false;
+
+    return occupy_shader_resource_1block(kernel, false);
+  } else {
+    trace_kernel_info_t &trace_kernel = static_cast<trace_kernel_info_t &>(kernel);
+    if (trace_kernel.m_tconfig->reg_win_mode == 4) {
+      // Use block scheduling or not is not decided
+      return (get_n_active_cta() < m_config->max_cta(kernel));
+    } else {
+      return (get_n_active_cta() < m_config->max_cta(kernel));
+    }
+  }
 }
 
 unsigned trace_shader_core_ctx::sim_init_thread(
@@ -572,6 +609,9 @@ void trace_shader_core_ctx::init_traces(unsigned start_warp, unsigned end_warp,
     trace_shd_warp_t *m_trace_warp = static_cast<trace_shd_warp_t *>(m_warp[i]);
     m_trace_warp->clear();
     threadblock_traces.push_back(&(m_trace_warp->warp_traces));
+    m_dep_table[i][0] = 1;
+    m_dep_table[i][1] = 0;
+    m_dep_table[i][2] = 1;
   }
   trace_kernel_info_t &trace_kernel =
       static_cast<trace_kernel_info_t &>(kernel);
@@ -626,6 +666,9 @@ void trace_shader_core_ctx::func_exec_inst(warp_inst_t &inst) {
   if (m_trace_warp->trace_done() && m_trace_warp->functional_done()) {
     m_trace_warp->ibuffer_flush();
     m_barriers.warp_exit(inst.warp_id());
+    m_dep_table[inst.warp_id()][0] = 0;
+    m_dep_table[inst.warp_id()][1] = 0;
+    m_dep_table[inst.warp_id()][2] = 1;
   }
 }
 
@@ -638,4 +681,96 @@ void trace_shader_core_ctx::issue_warp(register_set &warp,
   // delete warp_inst_t class here, it is not required anymore by gpgpu-sim
   // after issue
   delete pI;
+}
+
+bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, unsigned warp_id, unsigned long long curr_cycle) {
+  // Choose appwin or regwin?
+  const trace_warp_inst_t *pI = static_cast<const trace_warp_inst_t *>(next_inst);
+  trace_shd_warp_t *m_trace_warp =
+    static_cast<trace_shd_warp_t *>(m_warp[warp_id]);
+  trace_kernel_info_t *kernel_info = static_cast<trace_kernel_info_t *>(m_trace_warp->get_kernel_info());
+  unsigned int reg_win = 0;
+  unsigned int output_reg = 16;
+
+  if (kernel_info->m_tconfig->reg_win_mode == 1) {
+    reg_win = kernel_info->m_appwin + output_reg;
+  } else if (kernel_info->m_tconfig->reg_win_mode == 2) {
+    reg_win = kernel_info->m_kerwin + output_reg;
+  } else if (kernel_info->m_tconfig->reg_win_mode == 3) {
+    if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
+      reg_win = pI->m_funwin + output_reg;
+    } else if (pI->m_opcode == OP_RET) {
+      reg_win = pI->m_funwin + output_reg;
+    } else {
+      return true;
+    }
+  } else if (kernel_info->m_tconfig->reg_win_mode == 4) {
+    if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
+      reg_win = pI->m_funwin + output_reg;
+    } else if (pI->m_opcode == OP_RET) {
+      reg_win = pI->m_funwin + output_reg;
+    } else {
+      return true;
+    }
+  } else {
+    return true;
+  }
+
+  if (kernel_info->m_tconfig->reg_win_mode == 4) {
+    if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
+      m_dep_table[warp_id][0] = 1;
+      m_dep_table[warp_id][1] = pI->m_depwin;
+      int sum = 0;
+      for (unsigned k = 0; k < m_config->max_warps_per_shader; ++k) {
+        m_dep_table[warp_id][2] = m_warp[k]->waiting() ? 0 : 1;
+      }
+      for (unsigned k = 0; k < m_config->max_warps_per_shader; ++k) {
+        sum += m_dep_table[k][0] * m_dep_table[k][1] * m_dep_table[warp_id][2];
+      }
+      if (sum <= m_free_reg_number) {
+        // printf("%u not LIMITED by %u due to %u on SM %u\n", warp_id, m_free_reg_number, pI->m_depwin, get_sid());
+        m_free_reg_number -= reg_win;
+        // printf("Reg call %d %d!\n", m_free_reg_number, reg_win);
+        printf("Reserve %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
+        return true;
+      } else {
+        // printf("%u LIMITED by %u due to %u on SM %u\n", warp_id, m_free_reg_number, pI->m_depwin, get_sid());
+        m_dep_table[warp_id][0] = 0;
+        m_dep_table[warp_id][1] = 0;
+        printf("Full reserve %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
+        return false;
+      }
+    } else if (pI->m_opcode == OP_RET){
+      m_free_reg_number += reg_win;
+      // printf("Reg return %d %d!\n", m_free_reg_number, reg_win);
+      printf("Release %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
+      return true;
+    }
+    // Will never calls this
+    return false;
+  } else {
+    if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
+      if (m_free_reg_number >= reg_win) {
+        m_free_reg_number -= reg_win;
+        // printf("Reg call %d %d!\n", m_free_reg_number, reg_win);
+        printf("Reserve %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
+        return true;
+      } else {
+        printf("Full reserve %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
+        return false;
+        // return true;
+      }
+    } else if (pI->m_opcode == OP_RET) {
+      m_free_reg_number += reg_win;
+      // printf("Reg return %d %d!\n", m_free_reg_number, reg_win);
+      printf("Release %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
+      return true;
+    } else {
+      return true;
+    }
+    // Will never calls this
+    return false;
+  }
+  // Will never calls this
+  return false;
 }
