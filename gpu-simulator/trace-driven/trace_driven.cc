@@ -683,6 +683,16 @@ void trace_shader_core_ctx::issue_warp(register_set &warp,
   delete pI;
 }
 
+int align_to_chunk(int number, int chunk_size) {
+  if (number == 0)
+    return 0;
+  int num = chunk_size;
+  while (num < number) {
+    num += chunk_size;
+  }
+  return num;
+}
+
 bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, unsigned warp_id, unsigned long long curr_cycle) {
   // Choose appwin or regwin?
   const trace_warp_inst_t *pI = static_cast<const trace_warp_inst_t *>(next_inst);
@@ -698,17 +708,17 @@ bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, uns
     reg_win = kernel_info->m_kerwin + output_reg;
   } else if (kernel_info->m_tconfig->reg_win_mode == 3) {
     if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
-      reg_win = pI->m_funwin + output_reg;
+      reg_win = align_to_chunk(pI->m_funwin, 4) + output_reg;
     } else if (pI->m_opcode == OP_RET) {
-      reg_win = pI->m_funwin + output_reg;
+      reg_win = align_to_chunk(pI->m_funwin, 4) + output_reg;
     } else {
       return true;
     }
   } else if (kernel_info->m_tconfig->reg_win_mode == 4) {
     if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
-      reg_win = pI->m_funwin + output_reg;
+      reg_win = align_to_chunk(pI->m_funwin, 4) + output_reg;
     } else if (pI->m_opcode == OP_RET) {
-      reg_win = pI->m_funwin + output_reg;
+      reg_win = align_to_chunk(pI->m_funwin, 4) + output_reg;
     } else {
       return true;
     }
@@ -725,7 +735,7 @@ bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, uns
         m_dep_table[warp_id][2] = m_warp[k]->waiting() ? 0 : 1;
       }
       for (unsigned k = 0; k < m_config->max_warps_per_shader; ++k) {
-        sum += m_dep_table[k][0] * m_dep_table[k][1] * m_dep_table[warp_id][2];
+        sum += m_dep_table[k][0] * align_to_chunk(m_dep_table[k][1], 32) * m_dep_table[warp_id][2];
       }
       if (sum <= m_free_reg_number) {
         // printf("%u not LIMITED by %u due to %u on SM %u\n", warp_id, m_free_reg_number, pI->m_depwin, get_sid());
