@@ -156,14 +156,14 @@ class ConfigurationSpec:
                         logfile = open(this_directory +\
                                        "logfiles/"+ log_name + "." +\
                                        day_string + ".txt",'a')
-                        print("%s %6s %-22s %-100s %-25s %s.%s" %\
+                        print >> logfile, ("%s %6s %-22s %-100s %-25s %s.%s" %\
                                ( time_string ,\
                                torque_out ,\
                                benchmark ,\
                                self.benchmark_args_subdirs[args] ,\
                                self.run_subdir,\
                                benchmark,\
-                               build_handle ), file=logfile)
+                               build_handle ))
                         logfile.close()
             self.benchmark_args_subdirs.clear()
 

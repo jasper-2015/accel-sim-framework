@@ -163,6 +163,19 @@ bool trace_warp_inst_t::parse_from_trace_struct(
   m_decoded = true;
   pc = (address_type)trace.m_pc;
 
+  // Ni
+  if (trace.mem_local_reg == 1) {
+    mem_local_reg = true;
+  }
+  else if (trace.mem_local_reg == 0) {
+    mem_local_reg = false;
+  }
+  else {
+    printf("inst pc with no mem_local_reg: 0x%llx\n", pc);
+    fflush(stdout);
+    abort();  // Can only be 1 or 0
+  }
+
   isize =
       16;  // starting from MAXWELL isize=16 bytes (including the control bytes)
   for (unsigned i = 0; i < MAX_OUTPUT_VALUES; i++) {
@@ -598,7 +611,17 @@ void trace_shader_core_ctx::checkExecutionStatusAndUpdate(warp_inst_t &inst,
         m_config->n_simt_clusters * m_config->n_simt_cores_per_cluster,
         inst.data_size, (new_addr_type *)localaddrs);
     inst.set_addr(t, (new_addr_type *)localaddrs, num_addrs);
+
+  //   if (inst.mem_local_reg && inst.warp_id() == 0) {
+  //     printf("mem addrs for STL or LDL: 0x%llx\n", inst.pc);
+  //     for (unsigned i = 0; i < WARP_SIZE; i++) {
+  //       printf("0x%llx ", inst.get_addr(i));
+  //     }
+  //     printf("\n");
+  //   }
   }
+
+  // fflush(stdout);
 
   if (inst.op == EXIT_OPS) {
     m_warp[inst.warp_id()]->set_completed(t);
