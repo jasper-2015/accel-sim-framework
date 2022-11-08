@@ -166,7 +166,7 @@ bool inst_trace_t::parse_from_string(std::string trace,
   }
 
   // Ni
-  ss >> mem_local_reg;
+  // ss >> mem_local_reg;
 
   // parse mem info
   unsigned address_mode = 0;

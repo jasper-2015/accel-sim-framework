@@ -62,7 +62,7 @@ struct inst_trace_t {
   bool is_relo_call;
 
     // Ni
-  unsigned mem_local_reg;
+  // unsigned mem_local_reg;
 
   bool parse_from_string(std::string trace, unsigned tracer_version);
 
