@@ -61,6 +61,9 @@ struct inst_trace_t {
   unsigned depwin;
   bool is_relo_call;
 
+   // Ni
+  unsigned mem_local_reg;
+
   bool parse_from_string(std::string trace, unsigned tracer_version);
 
   bool check_opcode_contain(const std::vector<std::string> &opcode,

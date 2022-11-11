@@ -166,6 +166,19 @@ bool trace_warp_inst_t::parse_from_trace_struct(
   m_decoded = true;
   pc = (address_type)trace.m_pc;
 
+  // Ni
+  if (trace.mem_local_reg == 1) {
+    mem_local_reg = true;
+  }
+  else if (trace.mem_local_reg == 0) {
+    mem_local_reg = false;
+  }
+  else {
+    printf("inst pc with no mem_local_reg: 0x%llx\n", pc);
+    fflush(stdout);
+    abort();  // Can only be 1 or 0
+  }
+
   isize =
       16;  // starting from MAXWELL isize=16 bytes (including the control bytes)
   for (unsigned i = 0; i < MAX_OUTPUT_VALUES; i++) {
