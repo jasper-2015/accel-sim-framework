@@ -788,33 +788,33 @@ GPUFuncBenchmark:
               accel-sim-mem: 5G
         - lulesh:
             - args:
-              accel-sim-mem: 5G
+              accel-sim-mem: 3G
         - cfd:
             - args: 
-              accel-sim-mem: 5G
+              accel-sim-mem: 3G
         - traf:
             - args:
-              accel-sim-mem: 5G
+              accel-sim-mem: 1G
         - gol:
             - args:
-              accel-sim-mem: 5G
+              accel-sim-mem: 1G
         - ray:
             - args:
-              accel-sim-mem: 5G
+              accel-sim-mem: 8G
         - nbd:
             - args:
               accel-sim-mem: 5G
         - coli:
             - args:
-              accel-sim-mem: 5G
+              accel-sim-mem: 9G
         - stut:
             - args:
-              accel-sim-mem: 5G
+              accel-sim-mem: 1G
 
 GPUFuncBenchmark_test:
     exec_dir: "$GPUAPPS_ROOT/bin/$CUDA_VERSION/release/"
     data_dirs: "$GPUAPPS_ROOT/data_dirs/"
     execs:
-        - traf:
+        - stut:
             - args: 
-              accel-sim-mem: 5G
+              accel-sim-mem: 10G
