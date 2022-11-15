@@ -71,6 +71,24 @@ L1Set10MB:
 L1Set50MB:
     extra_params: "-gpgpu_adaptive_cache_config 0 -gpgpu_cache:dl1  S:6400:128:64,L:T:m:L:L,A:512:8,16:0,32 -gpgpu_unified_l1d_size 51200"
 
+Warp_Limiting_1:
+    extra_params: "-gpgpu_scheduler warp_limiting:2:1"
+
+Warp_Limiting_2:
+    extra_params: "-gpgpu_scheduler warp_limiting:2:2"
+
+Warp_Limiting_3:
+    extra_params: "-gpgpu_scheduler warp_limiting:2:3"
+
+Warp_Limiting_4:
+    extra_params: "-gpgpu_scheduler warp_limiting:2:4"
+
+Warp_Limiting_8:
+    extra_params: "-gpgpu_scheduler warp_limiting:2:8"
+
+Warp_Limiting_16:
+    extra_params: "-gpgpu_scheduler warp_limiting:2:16"
+
 MULTI_KERNEL:
     extra_params: "-gpgpu_concurrent_kernel_sm 1"
 
