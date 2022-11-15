@@ -744,19 +744,19 @@ bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, uns
         // printf("%u not LIMITED by %u due to %u on SM %u\n", warp_id, m_free_reg_number, pI->m_depwin, get_sid());
         m_free_reg_number -= reg_win;
         // printf("Reg call %d %d!\n", m_free_reg_number, reg_win);
-        printf("Reserve %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
+        // printf("Reserve %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
         return true;
       } else {
         // printf("%u LIMITED by %u due to %u on SM %u\n", warp_id, m_free_reg_number, pI->m_depwin, get_sid());
         m_dep_table[warp_id][0] = 0;
         m_dep_table[warp_id][1] = 0;
-        printf("Full reserve %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
+        // printf("Full reserve %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
         return false;
       }
     } else if (pI->m_opcode == OP_RET){
       m_free_reg_number += reg_win;
       // printf("Reg return %d %d!\n", m_free_reg_number, reg_win);
-      printf("Release %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
+      // printf("Release %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
       return true;
     }
     // Will never calls this
@@ -766,17 +766,17 @@ bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, uns
       if (m_free_reg_number >= reg_win) {
         m_free_reg_number -= reg_win;
         // printf("Reg call %d %d!\n", m_free_reg_number, reg_win);
-        printf("Reserve %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
+        // printf("Reserve %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
         return true;
       } else {
-        printf("Full reserve %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
+        // printf("Full reserve %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
         return false;
         // return true;
       }
     } else if (pI->m_opcode == OP_RET) {
       m_free_reg_number += reg_win;
       // printf("Reg return %d %d!\n", m_free_reg_number, reg_win);
-      printf("Release %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
+      // printf("Release %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
       return true;
     } else {
       return true;
