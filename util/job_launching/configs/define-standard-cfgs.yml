@@ -71,6 +71,9 @@ BW_L1L:
 BW_L1L_latency:
     extra_params: ""
 
+L1L_latency_256kB:
+    extra_params: ""
+
 L1Set10MB:
     extra_params: "-gpgpu_adaptive_cache_config 0 -gpgpu_cache:dl1  S:1280:128:64,L:T:m:L:L,A:512:8,16:0,32 -gpgpu_unified_l1d_size 10240"
 

@@ -792,9 +792,9 @@ GPUFuncBenchmark:
         - cfd:
             - args: 
               accel-sim-mem: 3G
-        - traf:
-            - args:
-              accel-sim-mem: 1G
+        # - traf:
+        #     - args:
+        #       accel-sim-mem: 1G
         - gol:
             - args:
               accel-sim-mem: 1G
