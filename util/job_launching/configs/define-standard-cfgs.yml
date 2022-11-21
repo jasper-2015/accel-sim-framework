@@ -66,10 +66,25 @@ L1Set256KB:
     extra_params: "-gpgpu_adaptive_cache_config 0 -gpgpu_cache:dl1  S:32:128:64,L:T:m:L:L,A:512:8,16:0,32 -gpgpu_unified_l1d_size 256"
 
 L1Set10MB:
-    extra_params: "-gpgpu_adaptive_cache_config 0 -gpgpu_cache:dl1  S:1280:128:64,L:T:m:L:L,A:512:8,16:0,32 -gpgpu_unified_l1d_size 10240"
+    extra_params: "-gpgpu_adaptive_cache_config 1 -gpgpu_cache:dl1  S:320:128:64,L:T:m:L:L,A:512:8,16:0,32 -gpgpu_unified_l1d_size 10240"
 
 L1Set50MB:
-    extra_params: "-gpgpu_adaptive_cache_config 0 -gpgpu_cache:dl1  S:6400:128:64,L:T:m:L:L,A:512:8,16:0,32 -gpgpu_unified_l1d_size 51200"
+    extra_params: "-gpgpu_adaptive_cache_config 0 -gpgpu_cache:dl1  S:1600:128:64,L:T:m:L:L,A:512:8,16:0,32 -gpgpu_unified_l1d_size 51200"
+
+pair:
+    extra_params: ""
+
+SWL_2warp:
+    extra_params: "-gpgpu_scheduler warp_limiting:2:2"
+
+SWL_3warp:
+    extra_params: "-gpgpu_scheduler warp_limiting:2:3"
+
+SWL_4warp:
+    extra_params: "-gpgpu_scheduler warp_limiting:2:4"
+
+SWL_16warp:
+    extra_params: "-gpgpu_scheduler warp_limiting:2:16"
 
 Warp_Limiting_1:
     extra_params: "-gpgpu_scheduler warp_limiting:2:1"
