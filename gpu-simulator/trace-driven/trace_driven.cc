@@ -518,6 +518,8 @@ void trace_gpgpu_sim::createSIMTCluster() {
 }
 
 void trace_simt_core_cluster::create_shader_core_ctx() {
+  // printf("n_simt_cores_per_cluster: %d\n", m_config->n_simt_cores_per_cluster);
+  // fflush(stdout);
   m_core = new shader_core_ctx *[m_config->n_simt_cores_per_cluster];
   for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++) {
     unsigned sid = m_config->cid_to_sid(i, m_cluster_id);
