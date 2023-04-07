@@ -71,7 +71,19 @@ L1Set10MB:
 L1Set50MB:
     extra_params: "-gpgpu_adaptive_cache_config 0 -gpgpu_cache:dl1  S:1600:128:64,L:T:m:L:L,A:512:8,16:0,32 -gpgpu_unified_l1d_size 51200"
 
-pair:
+Ideal_75:
+    extra_params: ""
+
+Highmark_75:
+    extra_params: ""
+
+90s:
+    extra_params: ""
+
+Fetch_Bandwidth_11_4:
+    extra_params: ""
+
+RCWS_new:
     extra_params: ""
 
 SWL_2warp:

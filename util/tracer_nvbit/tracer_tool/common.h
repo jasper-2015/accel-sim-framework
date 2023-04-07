@@ -21,6 +21,7 @@ typedef struct {
   int opcode_id;
   uint64_t addrs[32];
   uint32_t vpc;
+  uint32_t func_addr;
   bool is_mem;
   int32_t GPRDst;
   int32_t GPRSrcs[MAX_SRC];

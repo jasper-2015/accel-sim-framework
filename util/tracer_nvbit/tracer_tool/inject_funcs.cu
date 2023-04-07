@@ -22,7 +22,7 @@ extern "C" __device__ __noinline__ void instrument_inst(
     int32_t width, int32_t desReg, int32_t srcReg1, int32_t srcReg2,
     int32_t srcReg3, int32_t srcReg4, int32_t srcReg5, int32_t srcNum,
     uint64_t pchannel_dev, uint64_t ptotal_dynamic_instr_counter,
-    uint64_t preported_dynamic_instr_counter, uint64_t pstop_report) {
+    uint64_t preported_dynamic_instr_counter, uint64_t pstop_report, int32_t func_addr) {
 
   const int active_mask = __ballot_sync(__activemask(), 1);
   const int predicate_mask = __ballot_sync(__activemask(), pred);
@@ -60,6 +60,7 @@ extern "C" __device__ __noinline__ void instrument_inst(
   ma.warpid_sm = get_warpid();
   ma.opcode_id = opcode_id;
   ma.vpc = vpc;
+  ma.func_addr = func_addr;
   ma.GPRDst = desReg;
   ma.GPRSrcs[0] = srcReg1;
   ma.GPRSrcs[1] = srcReg2;

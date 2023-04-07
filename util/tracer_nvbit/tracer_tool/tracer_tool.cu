@@ -237,6 +237,8 @@ void instrument_function_if_needed(CUcontext ctx, CUfunction func) {
                                       (uint64_t)&reported_dynamic_instr_counter);
         nvbit_add_call_arg_const_val64(instr, (uint64_t)&stop_report);
 
+        nvbit_add_call_arg_const_val32(instr, (int)nvbit_get_func_addr(f));
+
         mem_oper_idx--;
       } while (mem_oper_idx >= 0);
 
@@ -425,6 +427,7 @@ void nvbit_at_cuda_event(CUcontext ctx, int is_exit, nvbit_api_cuda_t cbid,
     } else {
       /* make sure current kernel is completed */
       cudaDeviceSynchronize();
+      // std::cerr << cudaGetErrorString(cudaGetLastError()) << std::endl;
       assert(cudaGetLastError() == cudaSuccess);
 
       /* make sure we prevent re-entry on the nvbit_callback when issuing
@@ -590,7 +593,9 @@ void *recv_thread_fun(void *) {
           fprintf(resultsFile, "%d ", ma->sm_id);
           fprintf(resultsFile, "%d ", ma->warpid_sm);
         }
+        fprintf(resultsFile, "%08x ", ma->func_addr+ma->vpc);
         fprintf(resultsFile, "%04x ", ma->vpc); // Print the virtual PC
+        // fprintf(resultsFile, "%08x ", ma->func_addr);
         fprintf(resultsFile, "%08x ", ma->active_mask & ma->predicate_mask);
         if (ma->GPRDst >= 0) {
           fprintf(resultsFile, "1 ");
