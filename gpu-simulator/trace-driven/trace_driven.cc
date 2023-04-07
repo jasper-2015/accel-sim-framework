@@ -91,7 +91,8 @@ trace_kernel_info_t::trace_kernel_info_t(dim3 gridDim, dim3 blockDim,
                                          trace_parser *parser,
                                          class trace_config *config,
                                          kernel_trace_t *kernel_trace_info,
-                                         unsigned int appwin, unsigned int kerwin)
+                                         unsigned int appwin, unsigned int kerwin,
+                                         unsigned int ker_local_win)
     : kernel_info_t(gridDim, blockDim, m_function_info) {
   m_parser = parser;
   m_tconfig = config;
@@ -99,6 +100,7 @@ trace_kernel_info_t::trace_kernel_info_t(dim3 gridDim, dim3 blockDim,
   m_was_launched = false;
   m_appwin = appwin;
   m_kerwin = kerwin;
+  m_ker_local_win = ker_local_win;
 
   // resolve the binary version
   if (kernel_trace_info->binary_verion == AMPERE_RTX_BINART_VERSION ||
@@ -165,19 +167,20 @@ bool trace_warp_inst_t::parse_from_trace_struct(
   // fill and initialize common params
   m_decoded = true;
   pc = (address_type)trace.m_pc;
+  a_pc = (address_type)trace.a_pc;
 
     // Ni
-  // if (trace.mem_local_reg == 1) {
-  //   mem_local_reg = true;
-  // }
-  // else if (trace.mem_local_reg == 0) {
-  //   mem_local_reg = false;
-  // }
-  // else {
-  //   printf("inst pc with no mem_local_reg: 0x%llx\n", pc);
-  //   fflush(stdout);
-  //   abort();  // Can only be 1 or 0
-  // }
+  if (trace.mem_local_reg == 1) {
+    mem_local_reg = true;
+  }
+  else if (trace.mem_local_reg == 0) {
+    mem_local_reg = false;
+  }
+  else {
+    printf("inst pc with no mem_local_reg: 0x%llx\n", pc);
+    fflush(stdout);
+    abort();  // Can only be 1 or 0
+  }
 
   isize =
       16;  // starting from MAXWELL isize=16 bytes (including the control bytes)
@@ -607,7 +610,96 @@ const warp_inst_t *trace_shader_core_ctx::get_next_inst(unsigned warp_id,
   // read the inst from the traces
   trace_shd_warp_t *m_trace_warp =
       static_cast<trace_shd_warp_t *>(m_warp[warp_id]);
-  return m_trace_warp->get_next_trace_inst();
+
+  // Used for 5
+  // const warp_inst_t* next_inst = m_trace_warp->get_next_trace_inst();
+  // if (m_alloc_fail_record[warp_id] != 0 || !next_inst || !next_inst->mem_local_reg) {
+  //   return next_inst;
+  // }
+  // else {
+  //   do {
+  //     next_inst = m_trace_warp->get_next_trace_inst();
+  //     if (!next_inst) {
+  //       break;
+  //     }
+  //   } while (next_inst->mem_local_reg);
+  //   return next_inst;
+  // }
+
+  // Used for 6, 8
+  const warp_inst_t* next_inst = m_trace_warp->get_next_trace_inst();
+  if ((m_pair_record[warp_id].size() != 0 && m_pair_record[warp_id].back()) || !next_inst || !next_inst->mem_local_reg) {
+    return next_inst;
+  }
+  else {
+    do {
+      next_inst = m_trace_warp->get_next_trace_inst();
+      if (!next_inst) {
+        break;
+      }
+    } while (next_inst->mem_local_reg);
+    return next_inst;
+  }
+
+  // Used for 9
+  // const warp_inst_t* next_inst = NULL;
+  // if (m_spf_to_execute[warp_id].size() > 0) {
+  //   if (m_spf_to_execute[warp_id].front() != NULL) {
+  //     next_inst = m_spf_to_execute[warp_id].front();
+  //     // printf("next_inst %llx\n", next_inst->a_pc);
+  //   }
+  //   // if (next_inst == NULL) {
+  //   //   printf("size of m_spf_to_execute: %u\n", m_spf_to_execute[warp_id].size());
+  //   //   printf("inst is null on warp %u shader %u\n", warp_id, get_sid());
+  //   // }
+  //   m_spf_to_execute[warp_id].erase(m_spf_to_execute[warp_id].begin());
+  // }
+  // if (next_inst == NULL) {
+  //   do {
+  //     next_inst = m_trace_warp->get_next_trace_inst();
+  //     if (!next_inst) {
+  //       break;
+  //     }
+  //     // const trace_warp_inst_t *pI = static_cast<const trace_warp_inst_t *>(next_inst);
+  //     // if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
+  //     if (next_inst->op == CALL_OPS) {
+  //       reg_window new_reg_window;
+  //       new_reg_window.in_reg = true;
+  //       new_reg_window.borrowed = -1;
+  //       new_reg_window.used_own = 0;
+  //       m_window_per_warp[warp_id].push_back(new_reg_window);
+  //       break;
+  //     }
+  //     else if (next_inst->mem_local_reg) {
+        
+  //       // warp_inst_t* next_inst_copy = new warp_inst_t();
+  //       // *next_inst_copy = *next_inst;
+  //       // memcpy(next_inst_copy, next_inst, sizeof(warp_inst_t));
+        
+  //       if (next_inst->is_load()) {
+  //         // printf("LOAD: copy start!\n");
+  //         m_window_per_warp[warp_id].back().ldl.push_back(next_inst);
+  //         // m_window_per_warp[warp_id].back().ldl.push_back(next_inst_copy);
+  //         // printf("LOAD:copy finish!\n");
+  //         fflush(stdout);
+  //       }
+  //       else if (next_inst->is_store()) {
+  //         // printf("STORE:copy start!\n");
+  //         m_window_per_warp[warp_id].back().stl.push_back(next_inst);
+  //         // m_window_per_warp[warp_id].back().stl.push_back(next_inst_copy);
+  //         // printf("STORE:copy finish!\n");
+  //         fflush(stdout);
+  //       }
+  //       else {
+  //         assert(false);
+  //       }
+  //     }
+  //   } while (next_inst->mem_local_reg);
+  //   // printf("next_inst %llx\n", next_inst->a_pc);
+  // }
+  // return next_inst;
+
+  // return m_trace_warp->get_next_trace_inst();
 }
 
 void trace_shader_core_ctx::updateSIMTStack(unsigned warpId,
@@ -629,6 +721,102 @@ void trace_shader_core_ctx::init_traces(unsigned start_warp, unsigned end_warp,
   trace_kernel_info_t &trace_kernel =
       static_cast<trace_kernel_info_t &>(kernel);
   trace_kernel.get_next_threadblock_traces(threadblock_traces);
+
+  // Ni: get the static #reg/warp based on the nreg info in the trace file
+  kernel_trace_t* kernel_info = trace_kernel.get_trace_info();
+  static_reg_per_warp = 0;
+  num_warps_per_cta = (kernel_info->tb_dim_x * kernel_info->tb_dim_y * kernel_info->tb_dim_z)
+                              / 32;
+  if (num_warps_per_cta == 0) {
+    num_warps_per_cta = 1; // total # of threads is less than 32
+  }
+  static_reg_per_warp = (m_config->gpgpu_shader_registers / 32) / (kernel_max_cta_per_shader * num_warps_per_cta);
+  
+  // unsigned max_cta_per_core = 2048 / (kernel_info->nregs * num_warps_per_cta);
+  // unsigned total_cta = kernel_info->grid_dim_x * kernel_info->grid_dim_y * kernel_info->grid_dim_z;
+  // if (total_cta >= max_cta_per_core) {
+  //   static_reg_per_warp = 2048 / (max_cta_per_core * num_warps_per_cta);
+  // }
+  // else {
+  //   static_reg_per_warp = 2048 / (total_cta * num_warps_per_cta);
+  // }
+
+  num_reg_left = (m_config->gpgpu_shader_registers / 32) - ((kernel_info->ker_local_win + 16) * kernel_max_cta_per_shader * num_warps_per_cta);
+  unsigned num_running_warp = 0;
+  if (num_reg_left < 0) {
+    num_running_warp = 0;
+  }
+  else {
+    if (kernel_info->max_ker_win > 0) {
+      num_running_warp = num_reg_left / kernel_info->max_ker_win;
+    }
+    else {
+      num_running_warp = kernel_max_cta_per_shader * num_warps_per_cta;
+    }
+  }
+  
+  if (num_running_warp == 0) {
+    num_running_warp = 1;
+    stall_all = true;
+  }
+  else {
+    stall_all = false;
+  }
+  
+  for (unsigned i = start_warp; i < end_warp; i++) {
+    if (i < num_running_warp) {
+      m_warp_stall[i] = false;
+    }
+    else {
+      m_warp_stall[i] = true;
+      if (get_sid() == SID)
+        printf("stall warp %u\n", i);
+    }
+  }
+
+  // Used for 5
+  // for (unsigned i = start_warp; i < end_warp; i++) {
+  //   m_free_reg_per_warp[i] = static_reg_per_warp;
+  // }
+
+  // Used for 8
+  // for (unsigned i = start_warp; i < end_warp; i++) {
+  //   m_free_reg_per_warp[i] = num_reg_left;
+  // }
+
+  // Used for 9
+  // for (unsigned i = start_warp; i < end_warp; i++) {
+  //   m_free_reg_per_warp[i] = static_reg_per_warp - (kernel_info->ker_local_win + 16);
+  //   reg_window new_reg_window;
+  //   new_reg_window.reg_num = kernel_info->ker_local_win + 16;
+  //   new_reg_window.in_reg = true;
+  //   new_reg_window.borrowed = -1;
+  //   new_reg_window.used_own = 0;
+  //   m_window_per_warp[i].push_back(new_reg_window);
+  // }
+  
+  // num_chunk_per_warp = static_reg_per_warp / m_config->gpgpu_regchunk;
+  // unsigned num_chunk_left = (2048 / m_config->gpgpu_regchunk) - (num_chunk_per_warp * kernel_max_cta_per_shader * num_warps_per_cta);
+  // m_freelist_start = (2048 / m_config->gpgpu_regchunk) - num_chunk_left;
+  // for (unsigned i = m_freelist_start; i < (2048 / m_config->gpgpu_regchunk); i++) {
+  //   m_freelist.push_back(i);
+  // }
+
+  // for (unsigned k = 0; k < m_warp_regchunk.size(); k++) {
+  //     m_warp_regchunk[k] = -1; // Empty
+  //   }
+  
+  if (get_sid() == 0) {
+  //   printf("start_warp: %u, end_warp: %u\n", start_warp, end_warp);
+    printf("kernel_max_cta_per_shader: %u\n", kernel_max_cta_per_shader);
+    printf("static_reg_per_warp: %u\n", static_reg_per_warp);
+    printf("num_running_warp: %u\n", num_running_warp);
+    printf("num_reg_left: %u\n", num_reg_left);
+    // for (unsigned i = 0; i < m_freelist.size(); i++) {
+    //   printf("m_freelist[%u]: %u\n", i, m_freelist[i]);
+    // }
+  }
+  fflush(stdout);
 
   // set the pc from the traces and ignore the functional model
   for (unsigned i = start_warp; i < end_warp; ++i) {
@@ -682,6 +870,56 @@ void trace_shader_core_ctx::func_exec_inst(warp_inst_t &inst) {
     m_dep_table[inst.warp_id()][0] = 0;
     m_dep_table[inst.warp_id()][1] = 0;
     m_dep_table[inst.warp_id()][2] = 1;
+    m_dep_table[inst.warp_id()][3] = 0;
+
+    m_free_reg_per_warp[inst.warp_id()] = static_reg_per_warp;
+
+    if (m_call_record[inst.warp_id()].size() != 0) {
+      printf("call_record incorrect\n");
+      printf("inst pc 0x%llx on warp %u and SM %u\n", inst.pc, inst.warp_id(), get_sid());
+    }
+    assert(m_call_record[inst.warp_id()].size() == 0);
+    m_call_record[inst.warp_id()].clear();
+
+    if (m_pair_record[inst.warp_id()].size() != 0) {
+      printf("call_record incorrect\n");
+      printf("inst pc 0x%llx on warp %u and SM %u\n", inst.pc, inst.warp_id(), get_sid());
+    }
+    assert(m_pair_record[inst.warp_id()].size() == 0);
+    m_pair_record[inst.warp_id()].clear();
+    m_start_ker[inst.warp_id()] = false;
+    m_ker_fail[inst.warp_id()] = false;
+
+    printf("total_func_call: %u\n", total_func_call[inst.warp_id()]);
+    printf("func_call_spf: %u\n", func_call_spf[inst.warp_id()]);
+    printf("byte_spf: %llu\n", byte_spf[inst.warp_id()]);
+
+    total_func_call[inst.warp_id()] = 0;
+    func_call_spf[inst.warp_id()] = 0;
+    byte_spf[inst.warp_id()] = 0;
+    if (get_sid() == SID)
+      printf("Warp %u finishes\n", inst.warp_id());
+    if (m_alloc_fail_record[inst.warp_id()] != 0) {
+      printf("alloc_record incorrect\n");
+      printf("inst pc 0x%llx on warp %u and SM %u\n", inst.pc, inst.warp_id(), get_sid());
+    }
+    assert(m_alloc_fail_record[inst.warp_id()] == 0); // has to be 0 when warp is done
+
+    m_freelist.clear();
+
+    for (unsigned i = 0; i < m_warp_stall.size(); i++) {
+      if (m_warp_stall[i]) {
+        if (get_sid() == SID) {
+          printf("warp %u releases\n", i);
+        }
+        m_warp_stall[i] = false;
+        break;
+      }
+    }
+
+    m_window_per_warp[inst.warp_id()].clear();
+
+    fflush(stdout); 
   }
 }
 
@@ -704,6 +942,59 @@ int align_to_chunk(int number, int chunk_size) {
     num += chunk_size;
   }
   return num;
+}
+
+void trace_shader_core_ctx::window_kickoff(const warp_inst_t *next_inst, unsigned warp_id) {
+  trace_shd_warp_t *m_trace_warp =
+    static_cast<trace_shd_warp_t *>(m_warp[warp_id]);
+  trace_kernel_info_t *kernel_info = static_cast<trace_kernel_info_t *>(m_trace_warp->get_kernel_info());
+
+  if (kernel_info->m_tconfig->reg_win_mode == 9) {
+    // if (get_sid() == 3 && warp_id == 39) {
+    //   printf("regs left for warp %u on shader %u: %u\n", warp_id, get_sid(), 
+    //           m_free_reg_per_warp[warp_id]);
+    // }
+    if (m_window_per_warp[warp_id].size() > 0 && 
+          !m_window_per_warp[warp_id].back().in_reg) {
+      // Bring own back
+      for (unsigned i = 0; i < m_window_per_warp[warp_id].back().ldl.size(); i++) {
+        if (m_window_per_warp[warp_id].back().ldl[i] == NULL) {
+          printf("inst is null when bringing own back warp %u, shader %u\n", 
+                  warp_id, get_sid());
+          fflush(stdout);
+        }
+        m_spf_to_execute[warp_id].push_back(m_window_per_warp[warp_id].back().ldl[i]);
+      }
+      m_window_per_warp[warp_id].back().in_reg = true;
+
+      // kick others out
+      if (m_window_per_warp[warp_id].back().borrowed != -1){
+        printf("%u is borrowed by %u on shader %u\n", warp_id, 
+                m_window_per_warp[warp_id].back().borrowed, get_sid());
+        fflush(stdout);
+        assert(m_window_per_warp[warp_id].back().borrowed != -1);
+        unsigned borrowed_from;
+        if (warp_id >= 1) {
+          borrowed_from = warp_id - 1;
+        }
+        else {
+          borrowed_from = kernel_max_cta_per_shader * num_warps_per_cta - 1;
+        }
+        for (unsigned j = 0; j < 
+              m_window_per_warp[borrowed_from][m_window_per_warp[warp_id].back().borrowed].stl.size();
+              j++) {
+          if (m_window_per_warp[borrowed_from][m_window_per_warp[warp_id].back().borrowed].stl[j] == NULL) {
+            printf("inst is null when kicking others out warp %u, shader %u\n", 
+                    warp_id, get_sid());
+            fflush(stdout);
+          }
+          m_spf_to_execute[warp_id].push_back(
+                  m_window_per_warp[borrowed_from][m_window_per_warp[warp_id].back().borrowed].stl[j]);
+        }
+        m_window_per_warp[borrowed_from][m_window_per_warp[warp_id].back().borrowed].in_reg = false;
+      }
+    }
+  }
 }
 
 bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, unsigned warp_id, unsigned long long curr_cycle) {
@@ -735,43 +1026,1076 @@ bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, uns
     } else {
       return true;
     }
-  } else {
+  } 
+  else if (kernel_info->m_tconfig->reg_win_mode == 5) { // Ni: static per-warp window allocation
+    // Why align_to_chunk?
+    if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
+      reg_win = pI->m_funwin + output_reg;
+    } else if (pI->m_opcode == OP_RET) {
+      reg_win = pI->m_funwin + output_reg;
+    } else {
+      return true;
+    }
+  }
+  else if (kernel_info->m_tconfig->reg_win_mode == 6) { // Ni: Ideal allocator
+    // Why align_to_chunk?
+    if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
+      reg_win = pI->m_funwin + output_reg;
+    } else if (pI->m_opcode == OP_RET) {
+      reg_win = pI->m_funwin + output_reg;
+    } else {
+      return true;
+    }
+  }
+  else if (kernel_info->m_tconfig->reg_win_mode == 7) { // Ni: Real allocator X not used due to
+                                                        //    discontiguous
+    // Why align_to_chunk?
+    if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
+      reg_win = align_to_chunk(pI->m_funwin, m_config->gpgpu_regchunk) + output_reg;
+    } else if (pI->m_opcode == OP_RET) {
+      reg_win = align_to_chunk(pI->m_funwin, m_config->gpgpu_regchunk) + output_reg;
+    } else {
+      return true;
+    }
+  }
+  else if (kernel_info->m_tconfig->reg_win_mode == 8) { // Ni: Highmark
+    // Why align_to_chunk?
+    if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
+      reg_win = pI->m_funwin + output_reg;
+    } else if (pI->m_opcode == OP_RET) {
+      reg_win = pI->m_funwin + output_reg;
+    } else {
+      return true;
+    }
+  }
+  else if (kernel_info->m_tconfig->reg_win_mode == 9) { // Ni: overflow/underflow
+    // Why align_to_chunk?
+    if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
+      reg_win = pI->m_funwin + output_reg;
+    } else if (pI->m_opcode == OP_RET) {
+      reg_win = pI->m_funwin + output_reg;
+    } else {
+      return true;
+    }
+  }
+  else {
     return true;
   }
 
   if (kernel_info->m_tconfig->reg_win_mode == 4) {
     if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
-      m_dep_table[warp_id][0] = 1;
-      m_dep_table[warp_id][1] = pI->m_depwin;
-      int sum = 0;
-      for (unsigned k = 0; k < m_config->max_warps_per_shader; ++k) {
-        m_dep_table[warp_id][2] = m_warp[k]->waiting() ? 0 : 1;
+      // printf("%u not LIMITED by %u due to %u on SM %u\n", warp_id, m_free_reg_number, pI->m_depwin, get_sid());
+
+      // Ni: even if the register is not enough, if the pc shows up before, can update the record and issue
+      bool flag = false;
+      for (int i = 0; i < m_call_record[warp_id].size(); i++) {
+        if (pI->a_pc == m_call_record[warp_id][i].first) {
+          flag = true;
+          if ((m_call_record[warp_id][i].second & pI->get_active_mask()) != 0) {
+            printf("Wrong CALL pc: 0x%llx, mask: %llx&%llx on SM %u warp %u\n", 
+                    pI->a_pc, m_call_record[warp_id][i].second, pI->get_active_mask(), get_sid(), warp_id);
+            fflush(stdout);
+          }
+          assert((m_call_record[warp_id][i].second & pI->get_active_mask()) == 0);
+          m_call_record[warp_id][i].second |= pI->get_active_mask();
+          break;
+        }
       }
-      for (unsigned k = 0; k < m_config->max_warps_per_shader; ++k) {
-        sum += m_dep_table[k][0] * align_to_chunk(m_dep_table[k][1], 32) * m_dep_table[warp_id][2];
+      if (!flag) {
+        m_dep_table[warp_id][0] = 1;
+        m_dep_table[warp_id][1] = pI->m_depwin;
+        m_dep_table[warp_id][3] = pI->a_pc;
+        int sum = 0;
+        for (unsigned k = 0; k < m_config->max_warps_per_shader; ++k) {
+          m_dep_table[k][2] = m_warp[k]->waiting() ? 0 : 1;
+        }
+        for (unsigned k = 0; k < m_config->max_warps_per_shader; ++k) {
+          // sum += m_dep_table[k][0] * align_to_chunk(m_dep_table[k][1], 32) * m_dep_table[warp_id][2];
+          // Ni: other hs + own ws
+          if (k == warp_id) {
+            // sum += m_dep_table[k][0] * reg_win * m_dep_table[warp_id][2];
+            sum += m_dep_table[k][0] * align_to_chunk(reg_win, 32) * m_dep_table[warp_id][2];
+          }
+          else {
+            // sum += m_dep_table[k][0] * m_dep_table[k][1] * m_dep_table[warp_id][2];
+            sum += m_dep_table[k][0] * align_to_chunk(m_dep_table[k][1], 32) * m_dep_table[warp_id][2];
+          }
+        }
+
+        if (sum <= m_free_reg_number) {
+          active_mask_t mask_temp(pI->get_active_mask());
+          m_call_record[warp_id].push_back(std::make_pair(pI->a_pc, mask_temp));
+          m_alloc_fail_record[warp_id]++;
+          m_free_reg_number -= reg_win;
+          m_dep_table[warp_id][1] -= reg_win;
+
+          if (get_sid() == SID) {
+            printf("Reserve 0x%llx free reg left for SM %u warp %u: %u\n", next_inst->a_pc, get_sid(), warp_id,  m_free_reg_number);
+          }
+
+          if (get_sid() == SID && warp_id == WID) {
+            // printf("0x%llx free reg left for SM %u: %u\n", next_inst->a_pc, get_sid(), m_free_reg_number);
+            
+            for (unsigned i = 0; i < m_call_record[warp_id].size(); i++) {
+              printf("m_call_record[%u][%u]: <0x%llx %llx>\n", warp_id, i, 
+                      m_call_record[warp_id][i].first, m_call_record[warp_id][i].second.to_ullong());
+            }
+          }
+          return true;
+        }
+        else {
+          m_dep_table[warp_id][0] = 0;
+          m_dep_table[warp_id][1] = 0;
+          // if (get_sid() == SID) {
+          //   printf("RCWS return false 0x%llx on SM %u warp %u\n", pI->a_pc, get_sid(), warp_id);
+          // }
+          if (get_sid() == SID && warp_id == WID) {
+            printf("alloc_record 0x%llx for warp %u: %u\n", next_inst->a_pc, warp_id, m_alloc_fail_record[warp_id]);
+            printf("RCWS return false 0x%llx on SM %u warp %u\n", pI->a_pc, get_sid(), warp_id);
+            printf("sum: %d, remain: %d\n", sum, m_free_reg_number);
+            printf("Due to warps: ");
+            for (unsigned k = 0; k < m_config->max_warps_per_shader; ++k) {
+              if (m_dep_table[k][0] * m_dep_table[k][1] * m_dep_table[warp_id][2] != 0) {
+                printf("%u: %d 0x%llx now at 0x%llx, ", k, m_dep_table[warp_id][1], m_dep_table[warp_id][3], m_warp[warp_id]->get_pc());
+              }
+            }
+            printf("\n");
+
+            for (unsigned i = 0; i < m_call_record[warp_id].size(); i++) {
+              printf("m_call_record[%u][%u]: <0x%llx %llx>\n", warp_id, i, 
+                      m_call_record[warp_id][i].first, m_call_record[warp_id][i].second.to_ullong());
+            }
+            fflush(stdout);
+          }
+          return false;
+        }
       }
-      if (sum <= m_free_reg_number) {
-        // printf("%u not LIMITED by %u due to %u on SM %u\n", warp_id, m_free_reg_number, pI->m_depwin, get_sid());
-        m_free_reg_number -= reg_win;
-        // printf("Reg call %d %d!\n", m_free_reg_number, reg_win);
-        // printf("Reserve %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
+      else {
         return true;
-      } else {
-        // printf("%u LIMITED by %u due to %u on SM %u\n", warp_id, m_free_reg_number, pI->m_depwin, get_sid());
-        m_dep_table[warp_id][0] = 0;
-        m_dep_table[warp_id][1] = 0;
-        // printf("Full reserve %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
-        return false;
       }
     } else if (pI->m_opcode == OP_RET){
-      m_free_reg_number += reg_win;
+      if (get_sid() == SID && warp_id == WID)
+        printf("RET\n");
+      // m_free_reg_number += reg_win;
+      active_mask_t mask_temp = pI->get_active_mask();
+      if (get_sid() == SID && warp_id == WID)
+        printf("pI mask %llx, record mask %llx\n", mask_temp.to_ullong(),
+                m_call_record[warp_id].back().second);
+      fflush(stdout);
+      if (mask_temp.any()) {
+        for (int j = m_call_record[warp_id].size()-1; j >= 0; j--) {
+          bool ret_true = (m_call_record[warp_id][j].second & mask_temp).any();
+          if (ret_true) {
+            for (unsigned k = 0; k < WARP_SIZE; k++) {
+              if (mask_temp.test(k) && m_call_record[warp_id][j].second.test(k)) {
+                mask_temp.reset(k);
+                m_call_record[warp_id][j].second.reset(k);
+              }
+            }
+            if (mask_temp.none()) {
+              break;
+            }
+          }
+        }
+      }
+
+      while (m_call_record[warp_id].back().second == 0) {
+        if (get_sid() == SID && warp_id == WID)
+          printf("pop 0x%llx\n", m_call_record[warp_id].back().first);
+        m_call_record[warp_id].pop_back();
+        m_free_reg_number += reg_win;
+        assert(m_alloc_fail_record[warp_id] >= 1);
+        m_alloc_fail_record[warp_id]--;
+        if (get_sid() == SID) {
+          printf("Release 0x%llx free reg left for SM %u warp %u: %u\n", next_inst->a_pc, get_sid(), warp_id,  m_free_reg_number);
+        }
+      }
+      if (m_alloc_fail_record[warp_id] == 0) {
+        m_dep_table[warp_id][1] = 0;
+      }
+      fflush(stdout);
       // printf("Reg return %d %d!\n", m_free_reg_number, reg_win);
       // printf("Release %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
       return true;
     }
     // Will never calls this
     return false;
-  } else {
+  } 
+  else if (kernel_info->m_tconfig->reg_win_mode == 5) {
+    if (!m_start_ker[warp_id]) {
+      if (m_free_reg_per_warp[warp_id] >= (kernel_info->m_ker_local_win + 16)) {
+        m_free_reg_per_warp[warp_id] -= (kernel_info->m_ker_local_win + 16);
+      }
+      else {
+        m_ker_fail[warp_id] = true;
+      }
+      if (warp_id == WID) {
+        printf("m_free_reg_per_warp now is %d\n", m_free_reg_per_warp[warp_id]);
+        fflush(stdout);
+      }
+      m_start_ker[warp_id] = true;
+    }
+    if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
+      bool flag = false;
+      for (int i = 0; i < m_call_record[warp_id].size(); i++) {
+        if (pI->a_pc == m_call_record[warp_id][i].first) {
+          flag = true;
+          if ((m_call_record[warp_id][i].second & pI->get_active_mask()) != 0) {
+            printf("Wrong CALL pc: 0x%llx, mask: %llx&%llx on SM %u warp %u\n", 
+                    pI->a_pc, m_call_record[warp_id][i].second, pI->get_active_mask(), get_sid(), warp_id);
+            fflush(stdout);
+          }
+          assert((m_call_record[warp_id][i].second & pI->get_active_mask()) == 0);
+          m_call_record[warp_id][i].second |= pI->get_active_mask();
+          break;
+        }
+      }
+      if (!flag) {
+        total_func_call[warp_id]++;
+        active_mask_t mask_temp(pI->get_active_mask());
+        m_call_record[warp_id].push_back(std::make_pair(pI->a_pc, mask_temp));
+        if (m_free_reg_per_warp[warp_id] >= reg_win && !m_ker_fail[warp_id]) {
+          m_free_reg_per_warp[warp_id] -= reg_win;
+          if (get_sid() == SID && warp_id == WID)
+            printf("0x%llx free reg left for warp %u: %u\n", next_inst->a_pc, warp_id, m_free_reg_per_warp[warp_id]);
+        }
+        else {
+          func_call_spf[warp_id]++;
+          m_alloc_fail_record[warp_id]++;
+          printf("func needs %d, but have %d left\n", reg_win, m_free_reg_per_warp[warp_id]);
+          if (get_sid() == SID && warp_id == WID)
+            printf("alloc_record 0x%llx for warp %u: %u\n", next_inst->a_pc, warp_id, m_alloc_fail_record[warp_id]);
+        }
+      }
+      if (get_sid() == SID && warp_id == WID) {
+        for (unsigned i = 0; i < m_call_record[warp_id].size(); i++) {
+          printf("m_call_record[%u][%u]: <0x%llx %llx>\n", warp_id, i, 
+                  m_call_record[warp_id][i].first, m_call_record[warp_id][i].second.to_ullong());
+        }
+      }
+      
+      // fflush(stdout);
+      return true; // Ni: start spills&fills after regs exhausted
+    }
+    else if (pI->m_opcode == OP_RET) {
+      bool flag = true;
+      active_mask_t mask_temp = pI->get_active_mask();
+      // if (get_sid() == SID && warp_id == WID)
+      //     printf("pI mask %llx, record mask %llx\n", mask_temp.to_ullong(),
+      //             m_call_record[warp_id].back().second);
+      if (mask_temp.any()) {
+        for (int j = m_call_record[warp_id].size()-1; j >= 0; j--) {
+          bool ret_true = (m_call_record[warp_id][j].second & mask_temp).any();
+          if (ret_true) {
+            std::string mask1 = m_call_record[warp_id][j].second.to_string();
+            std::string mask2 = mask_temp.to_string();
+            if (mask1 >= mask2) {
+              for (unsigned k = 0; k < WARP_SIZE; k++) {
+                if (mask_temp.test(k) && m_call_record[warp_id][j].second.test(k)) {
+                  mask_temp.reset(k);
+                  m_call_record[warp_id][j].second.reset(k);
+                }
+              }
+              // m_call_record[warp_id][j].second = m_call_record[warp_id][j].second ^ mask_temp; // bug
+              // mask_temp.reset();
+            }
+            else {
+              for (unsigned k = 0; k < WARP_SIZE; k++) {
+                if (mask_temp.test(k) && m_call_record[warp_id][j].second.test(k)) {
+                  mask_temp.reset(k);
+                  m_call_record[warp_id][j].second.reset(k);
+                }
+              }
+            }
+            if (mask_temp.none()) {
+              break;
+            }
+          }
+        }
+      }
+
+      while (m_call_record[warp_id].back().second == 0) {
+      // if (m_call_record[warp_id].back().second == 0) {
+        if (get_sid() == SID && warp_id == WID)
+          printf("pop 0x%llx\n", m_call_record[warp_id].back().first);
+        m_call_record[warp_id].pop_back();
+        if (m_alloc_fail_record[warp_id] > 0) {
+          m_alloc_fail_record[warp_id]--;
+          if (get_sid() == SID && warp_id == WID)
+            printf("RET alloc_record 0x%llx for warp %u: %u\n", next_inst->a_pc, warp_id, m_alloc_fail_record[warp_id]);
+        }
+        else if (m_alloc_fail_record[warp_id] == 0) {
+          m_free_reg_per_warp[warp_id] += reg_win;
+          if (get_sid() == SID && warp_id == WID)
+            printf("0x%llx RET free reg left for warp %u: %u\n", next_inst->a_pc, warp_id, m_free_reg_per_warp[warp_id]);
+        }
+      }
+      fflush(stdout);
+      return true;
+    }
+    else {
+      return true;
+    }
+    
+    return true; 
+  }
+  else if (kernel_info->m_tconfig->reg_win_mode == 6) {
+    if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
+      if (!m_start_ker[warp_id]) {
+        m_free_reg_number -= (kernel_info->m_ker_local_win + 16);
+        if (warp_id == WID) {
+          printf("m_free_reg_number now is %d\n", m_free_reg_number);
+          fflush(stdout);
+        }
+        m_start_ker[warp_id] = true;
+      }
+      bool flag = false;
+      for (int i = 0; i < m_call_record[warp_id].size(); i++) {
+        if (pI->a_pc == m_call_record[warp_id][i].first) {
+          flag = true;
+          if ((m_call_record[warp_id][i].second & pI->get_active_mask()) != 0) {
+            printf("Wrong CALL pc: 0x%llx, mask: %llx&%llx on SM %u warp %u\n", 
+                    pI->a_pc, m_call_record[warp_id][i].second, pI->get_active_mask(), get_sid(), warp_id);
+            fflush(stdout);
+          }
+          assert((m_call_record[warp_id][i].second & pI->get_active_mask()) == 0);
+          m_call_record[warp_id][i].second |= pI->get_active_mask();
+          break;
+        }
+      }
+      if (!flag) {
+        total_func_call[warp_id]++;
+        active_mask_t mask_temp(pI->get_active_mask());
+        m_call_record[warp_id].push_back(std::make_pair(pI->a_pc, mask_temp));
+
+        if (m_free_reg_number >= reg_win) {
+          m_free_reg_number -= reg_win;
+          m_pair_record[warp_id].push_back(false);
+          if (get_sid() == SID && warp_id == WID)
+            printf("0x%llx free reg left for warp %u: %u\n", next_inst->a_pc, warp_id, m_free_reg_per_warp[warp_id]);
+        }
+        else {
+          func_call_spf[warp_id]++;
+          m_alloc_fail_record[warp_id]++;
+          m_pair_record[warp_id].push_back(true);
+          if (get_sid() == SID && warp_id == WID)
+            printf("alloc_record 0x%llx for warp %u: %u\n", next_inst->a_pc, warp_id, m_alloc_fail_record[warp_id]);
+        }
+      }
+      if (get_sid() == SID && warp_id == WID) {
+        for (unsigned i = 0; i < m_call_record[warp_id].size(); i++) {
+          printf("m_call_record[%u][%u]: <0x%llx %llx>\n", warp_id, i, 
+                  m_call_record[warp_id][i].first, m_call_record[warp_id][i].second.to_ullong());
+        }
+      }
+      
+      // fflush(stdout);
+      return true; // Ni: start spills&fills after regs exhausted
+    }
+    else if (pI->m_opcode == OP_RET) {
+      bool flag = true;
+      active_mask_t mask_temp = pI->get_active_mask();
+      // if (get_sid() == SID && warp_id == WID)
+      //     printf("pI mask %llx, record mask %llx\n", mask_temp.to_ullong(),
+      //             m_call_record[warp_id].back().second);
+      if (mask_temp.any()) {
+        for (int j = m_call_record[warp_id].size()-1; j >= 0; j--) {
+          bool ret_true = (m_call_record[warp_id][j].second & mask_temp).any();
+          if (ret_true) {
+            std::string mask1 = m_call_record[warp_id][j].second.to_string();
+            std::string mask2 = mask_temp.to_string();
+            if (mask1 >= mask2) {
+              for (unsigned k = 0; k < WARP_SIZE; k++) {
+                if (mask_temp.test(k) && m_call_record[warp_id][j].second.test(k)) {
+                  mask_temp.reset(k);
+                  m_call_record[warp_id][j].second.reset(k);
+                }
+              }
+              // m_call_record[warp_id][j].second = m_call_record[warp_id][j].second ^ mask_temp; // bug
+              // mask_temp.reset();
+            }
+            else {
+              for (unsigned k = 0; k < WARP_SIZE; k++) {
+                if (mask_temp.test(k) && m_call_record[warp_id][j].second.test(k)) {
+                  mask_temp.reset(k);
+                  m_call_record[warp_id][j].second.reset(k);
+                }
+              }
+            }
+            if (mask_temp.none()) {
+              break;
+            }
+          }
+        }
+      }
+
+      while (m_call_record[warp_id].back().second == 0) {
+        if (get_sid() == SID && warp_id == WID)
+          printf("pop 0x%llx\n", m_call_record[warp_id].back().first);
+        m_call_record[warp_id].pop_back();
+        m_pair_record[warp_id].pop_back();
+        if (m_alloc_fail_record[warp_id] > 0) {
+          m_alloc_fail_record[warp_id]--;
+          if (get_sid() == SID && warp_id == WID)
+            printf("RET alloc_record 0x%llx for warp %u: %u\n", next_inst->a_pc, warp_id, m_alloc_fail_record[warp_id]);
+        }
+        else if (m_alloc_fail_record[warp_id] == 0) {
+          m_free_reg_number += reg_win;
+          if (get_sid() == SID && warp_id == WID)
+            printf("0x%llx RET free reg left for warp %u: %u\n", next_inst->a_pc, warp_id, m_free_reg_per_warp[warp_id]);
+        }
+      }
+      fflush(stdout);
+      return true;
+    }
+    else {
+      return true;
+    }
+    
+    return true; 
+  }
+  else if (kernel_info->m_tconfig->reg_win_mode == 7) {
+    unsigned chunks_needed = 0;
+    unsigned chunks_left = 0;
+    unsigned start_pos = warp_id * num_chunk_per_warp;
+    unsigned end_pos = (warp_id + 1) * num_chunk_per_warp - 1;
+    if (!m_start_ker[warp_id]) {
+      chunks_needed = (align_to_chunk(kernel_info->m_ker_local_win, m_config->gpgpu_regchunk) + 16) 
+                        / m_config->gpgpu_regchunk;
+      assert(chunks_needed <= num_chunk_per_warp);
+      for (unsigned i = 0; i < chunks_needed; i++) {
+        m_warp_regchunk[start_pos+i] = warp_id;
+      }
+      if (warp_id == WID) {
+        printf("m_free_reg_per_warp now is %d\n", (num_chunk_per_warp - chunks_needed) * 
+        m_config->gpgpu_regchunk);
+        fflush(stdout);
+      }
+      m_start_ker[warp_id] = true;
+    }
+    chunks_needed = reg_win / m_config->gpgpu_regchunk;
+    if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
+      // The warp is stalled
+      if (std::find(m_stalled_warp.begin(), m_stalled_warp.end(), warp_id) != m_stalled_warp.end()) {
+        if (get_sid() == SID) {
+          printf("warp %u is stalled\n", warp_id);
+          printf("m_stalled_warp: ");
+          for (unsigned i = 0; i < m_stalled_warp.size(); i++) {
+            printf("%u ", m_stalled_warp[i]);
+          }
+          printf("\n");
+        }
+        fflush(stdout);
+        return false;
+      }
+      bool flag = false;
+      for (int i = 0; i < m_call_record[warp_id].size(); i++) {
+        if (pI->a_pc == m_call_record[warp_id][i].first) {
+          flag = true;
+          if ((m_call_record[warp_id][i].second & pI->get_active_mask()) != 0) {
+            printf("Wrong CALL pc: 0x%llx, mask: %llx&%llx on SM %u warp %u\n", 
+                    pI->a_pc, m_call_record[warp_id][i].second, pI->get_active_mask(), get_sid(), warp_id);
+            fflush(stdout);
+          }
+          assert((m_call_record[warp_id][i].second & pI->get_active_mask()) == 0);
+          m_call_record[warp_id][i].second |= pI->get_active_mask();
+          break;
+        }
+      }
+      if (!flag) {
+        for (unsigned i = start_pos; i <= end_pos; i++) {
+          if (m_warp_regchunk[i] == -1) {
+            chunks_left++;
+          }
+        }
+        total_func_call[warp_id]++;
+        active_mask_t mask_temp(pI->get_active_mask());
+        m_call_record[warp_id].push_back(std::make_pair(pI->a_pc, mask_temp));
+
+        if (chunks_left >= chunks_needed) {
+          unsigned chunks_used = 0;
+          for (unsigned i = start_pos; i <= end_pos; i++) {
+            if (m_warp_regchunk[i] == -1) {
+              m_warp_regchunk[i] = warp_id;
+              chunks_used++;
+              if (chunks_used == chunks_needed) {
+                break;
+              }
+            }
+          }
+          m_pair_record[warp_id].push_back(false);
+          if (get_sid() == SID) {
+            printf("warp %u gets enough chunks, used %u, %u left\n", warp_id, chunks_used, 
+                    chunks_left - chunks_used);
+          }
+        }
+        else {
+          func_call_spf[warp_id]++;
+          unsigned chunks_used = 0;
+          // First use leftovers
+          if (chunks_left > 0) {
+            for (unsigned i = start_pos; i <= end_pos; i++) {
+              if (m_warp_regchunk[i] == -1) {
+                chunks_used++;
+              }
+            }
+          }
+          assert(chunks_used < chunks_needed);
+
+          // Then check free list
+          chunks_used += m_freelist.size();
+
+          // Then stall other warps
+          unsigned warp_to_stall = 0;
+          unsigned start_pos_stall = 0;
+          unsigned end_pos_stall = 0;
+          unsigned warp_to_stall_limiter = 0;
+          while (chunks_used < chunks_needed && warp_to_stall < m_config->max_warps_per_shader) {
+            warp_to_stall_limiter = warp_to_stall;
+            while (std::find(m_stalled_warp.begin(), m_stalled_warp.end(), warp_to_stall) == m_stalled_warp.end()) {
+              warp_to_stall_limiter++;
+              if (warp_to_stall_limiter == m_config->max_warps_per_shader) {
+                break;
+              }
+            }
+            if (warp_to_stall_limiter < m_config->max_warps_per_shader) {
+              warp_to_stall = warp_to_stall_limiter;
+            }
+            else {
+              warp_to_stall++;
+              if (warp_to_stall == m_config->max_warps_per_shader) {
+                break;
+              }
+            }
+            start_pos_stall = warp_to_stall * num_chunk_per_warp;
+            end_pos_stall = (warp_to_stall + 1) * num_chunk_per_warp - 1;
+            for (unsigned i = start_pos_stall; i <= end_pos_stall; i++) {
+              if (m_warp_regchunk[i] == -1) {
+                chunks_used++;
+              }
+              if (chunks_used == chunks_needed) {
+                break;
+              }
+            }
+          }
+
+          // Nothing left, spill&fill
+          if (chunks_used < chunks_needed) {
+            m_pair_record[warp_id].push_back(true);
+          }
+          else {
+            m_pair_record[warp_id].push_back(false);
+            chunks_used = 0;
+            // First use leftovers
+            if (chunks_left > 0) {
+              for (unsigned i = start_pos; i <= end_pos; i++) {
+                if (m_warp_regchunk[i] == -1) {
+                  m_warp_regchunk[i] = warp_id;
+                  chunks_used++;
+                }
+              }
+            }
+            assert(chunks_used < chunks_needed);
+
+            // Then check free list
+            if (m_freelist.size()) {
+              while (m_freelist.size() > 0) {
+                m_warp_regchunk[m_freelist[0]] = warp_id;
+                chunks_used++;
+                m_freelist.erase(m_freelist.begin());
+                if (chunks_used == chunks_needed) {
+                  break;
+                }
+              }
+            }
+
+            // Then stall other warps
+            warp_to_stall = 0;
+            start_pos_stall = 0;
+            end_pos_stall = 0;
+            unsigned chunks_borrowed = 0;
+            while (chunks_used < chunks_needed && warp_to_stall < m_config->max_warps_per_shader) {
+              warp_to_stall_limiter = warp_to_stall;
+              while (std::find(m_stalled_warp.begin(), m_stalled_warp.end(), warp_to_stall) == m_stalled_warp.end()) {
+                warp_to_stall_limiter++;
+                if (warp_to_stall_limiter == m_config->max_warps_per_shader) {
+                  break;
+                }
+              }
+              if (warp_to_stall_limiter < m_config->max_warps_per_shader) {
+                warp_to_stall = warp_to_stall_limiter;
+              }
+              else {
+                warp_to_stall++;
+                if (warp_to_stall == m_config->max_warps_per_shader) {
+                  break;
+                }
+              }
+              if (get_sid() == SID)
+                printf("warp %u is trying to stall warp %u\n", warp_id, warp_to_stall);
+              chunks_borrowed = 0;
+              start_pos_stall = warp_to_stall * num_chunk_per_warp;
+              end_pos_stall = (warp_to_stall + 1) * num_chunk_per_warp - 1;
+              for (unsigned i = start_pos_stall; i <= end_pos_stall; i++) {
+                if (m_warp_regchunk[i] == -1) {
+                  m_warp_regchunk[i] = warp_id;
+                  chunks_used++;
+                  chunks_borrowed++;
+                }
+                if (chunks_used == chunks_needed) {
+                  break;
+                }
+              }
+              if (chunks_borrowed > 0) {
+                m_warp_stall_warp[warp_id].push_back(std::make_pair(warp_to_stall, chunks_borrowed));
+                m_stalled_warp.push_back(warp_to_stall);
+              }
+            }
+            assert(chunks_used == chunks_needed);
+          }
+        }
+      }
+      // if (get_sid() == SID && warp_id == WID) {
+      //   for (unsigned i = 0; i < m_call_record[warp_id].size(); i++) {
+      //     printf("m_call_record[%u][%u]: <0x%llx %llx>\n", warp_id, i, 
+      //             m_call_record[warp_id][i].first, m_call_record[warp_id][i].second.to_ullong());
+      //   }
+      // }
+      
+      // fflush(stdout);
+      return true; // Ni: start spills&fills after regs exhausted
+    }
+    else if (pI->m_opcode == OP_RET) {
+      bool flag = true;
+      active_mask_t mask_temp = pI->get_active_mask();
+      // if (get_sid() == SID && warp_id == WID)
+      //     printf("pI mask %llx, record mask %llx\n", mask_temp.to_ullong(),
+      //             m_call_record[warp_id].back().second);
+      if (mask_temp.any()) {
+        for (int j = m_call_record[warp_id].size()-1; j >= 0; j--) {
+          bool ret_true = (m_call_record[warp_id][j].second & mask_temp).any();
+          if (ret_true) {
+            std::string mask1 = m_call_record[warp_id][j].second.to_string();
+            std::string mask2 = mask_temp.to_string();
+            if (mask1 >= mask2) {
+              for (unsigned k = 0; k < WARP_SIZE; k++) {
+                if (mask_temp.test(k) && m_call_record[warp_id][j].second.test(k)) {
+                  mask_temp.reset(k);
+                  m_call_record[warp_id][j].second.reset(k);
+                }
+              }
+              // m_call_record[warp_id][j].second = m_call_record[warp_id][j].second ^ mask_temp; // bug
+              // mask_temp.reset();
+            }
+            else {
+              for (unsigned k = 0; k < WARP_SIZE; k++) {
+                if (mask_temp.test(k) && m_call_record[warp_id][j].second.test(k)) {
+                  mask_temp.reset(k);
+                  m_call_record[warp_id][j].second.reset(k);
+                }
+              }
+            }
+            if (mask_temp.none()) {
+              break;
+            }
+          }
+        }
+      }
+
+      unsigned chunks_released;
+      unsigned start_pos_stall = 0;
+      unsigned end_pos_stall = 0;
+      while (m_call_record[warp_id].back().second == 0) {
+        if (get_sid() == SID && warp_id == WID)
+          printf("pop 0x%llx\n", m_call_record[warp_id].back().first);
+        m_call_record[warp_id].pop_back();
+        m_pair_record[warp_id].pop_back();
+        chunks_released = 0;
+        // First release other stalled warp
+        if (m_warp_stall_warp[warp_id].size() > 0) {
+          unsigned chunk_released_stall = 0;
+          while (m_warp_stall_warp[warp_id].size() > 0) {
+            chunk_released_stall = 0;
+            start_pos_stall = m_warp_stall_warp[warp_id][0].first * num_chunk_per_warp;
+            end_pos_stall = (m_warp_stall_warp[warp_id][0].first + 1) * num_chunk_per_warp - 1;
+            for (unsigned i = start_pos_stall; i <= end_pos_stall; i++) {
+              if (m_warp_regchunk[i] == warp_id) {
+                m_warp_regchunk[i] = -1;
+                chunks_released++;
+                chunk_released_stall++;
+              }
+              // The warp has released all of its reserved chunk
+              if (chunk_released_stall == m_warp_stall_warp[warp_id][0].second) {
+                break;
+              }
+              // The warp has released all of the chunks that the RET specifies
+              if (chunks_needed == chunks_released) {
+                break;
+              }
+            }
+            assert(chunk_released_stall > 0);
+            // Release the stalled warp only when all of the borrowed chunks are released
+            bool release_flag = true;
+            for (unsigned i = start_pos_stall; i <= end_pos_stall; i++) {
+              if (m_warp_regchunk[i] != -1 && 
+                  m_warp_regchunk[i] != m_warp_stall_warp[warp_id][0].first) {
+                release_flag = false;
+                break;
+              }
+            }
+            if (release_flag) {
+              m_stalled_warp.erase(std::remove(m_stalled_warp.begin(), m_stalled_warp.end(), 
+                                  m_warp_stall_warp[warp_id][0].first), m_stalled_warp.end());
+            }
+            m_warp_stall_warp[warp_id][0].second -= chunk_released_stall;
+            if (m_warp_stall_warp[warp_id][0].second == 0) {
+              m_warp_stall_warp[warp_id].erase(m_warp_stall_warp[warp_id].begin());
+            }
+            
+            assert(chunks_needed >= chunks_released);
+            if (chunks_needed == chunks_released) {
+              break;
+            }
+          }
+        }
+
+        // Then release freelist
+        if (chunks_released < chunks_needed) {
+          for (unsigned i = m_freelist_start; i < (m_config->gpgpu_shader_registers / 32) / m_config->gpgpu_regchunk; i++) {
+            if (m_warp_regchunk[i] == warp_id) {
+              m_warp_regchunk[i] = -1;
+              m_freelist.push_back(i);
+              chunks_released++;
+            }
+            if (chunks_needed == chunks_released) {
+              break;
+            }
+          }
+        }
+
+        // Then release own chunks
+        // If in stalled list, release itself from the list -- NO!!
+        // Only release until all of the borrowed chunks are released
+        if (chunks_released < chunks_needed) {
+          for (unsigned i = start_pos; i <= end_pos; i++) {
+            if (m_warp_regchunk[i] == warp_id) {
+              m_warp_regchunk[i] = -1;
+              chunks_released++;
+            }
+            if (chunks_needed == chunks_released) {
+              break;
+            }
+          }
+
+          assert(chunks_released == chunks_needed);
+        }
+      }
+      fflush(stdout);
+      return true;
+    }
+    else {
+      return true;
+    }
+    
+    return true; 
+  }
+  else if (kernel_info->m_tconfig->reg_win_mode == 8) {
+    if (m_warp_stall[warp_id]) {
+      bool release_flag = false;
+      unsigned cta_in_shader = warp_id / num_warps_per_cta;
+      for (unsigned i = 0; i < num_warps_per_cta; i++) {
+        if (m_warp[cta_in_shader*num_warps_per_cta+i]->waiting()) {
+          release_flag = true;  // release but do spill&fill
+          break;
+        }
+      }
+      if (!release_flag) {
+        if (get_sid() == SID) {
+          printf("warp %u is stuck\n", warp_id);
+          fflush(stdout);
+        }
+        return false; // The warp is stalled
+      }
+    }
+    if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
+      bool flag = false;
+      for (int i = 0; i < m_call_record[warp_id].size(); i++) {
+        if (pI->a_pc == m_call_record[warp_id][i].first) {
+          flag = true;
+          if ((m_call_record[warp_id][i].second & pI->get_active_mask()) != 0) {
+            printf("Wrong CALL pc: 0x%llx, mask: %llx&%llx on SM %u warp %u\n", 
+                    pI->a_pc, m_call_record[warp_id][i].second, pI->get_active_mask(), get_sid(), warp_id);
+            fflush(stdout);
+          }
+          assert((m_call_record[warp_id][i].second & pI->get_active_mask()) == 0);
+          m_call_record[warp_id][i].second |= pI->get_active_mask();
+          break;
+        }
+      }
+      if (!flag) {
+        total_func_call[warp_id]++;
+        active_mask_t mask_temp(pI->get_active_mask());
+        m_call_record[warp_id].push_back(std::make_pair(pI->a_pc, mask_temp));
+        if (m_warp_stall[warp_id]) {
+          func_call_spf[warp_id]++;
+          m_pair_record[warp_id].push_back(true);
+        }
+        else {
+          if (stall_all) {
+            if (reg_win <= m_free_reg_per_warp[warp_id]) {
+              m_free_reg_per_warp[warp_id] -= reg_win;
+              m_pair_record[warp_id].push_back(false);
+            }
+            else {
+              m_pair_record[warp_id].push_back(true);
+            }
+          }
+          else {
+            m_pair_record[warp_id].push_back(false);
+          }
+        }
+      }
+      if (get_sid() == SID && warp_id == WID) {
+        for (unsigned i = 0; i < m_call_record[warp_id].size(); i++) {
+          printf("m_call_record[%u][%u]: <0x%llx %llx>\n", warp_id, i, 
+                  m_call_record[warp_id][i].first, m_call_record[warp_id][i].second.to_ullong());
+        }
+      }
+      
+      // fflush(stdout);
+      return true; // Ni: start spills&fills after regs exhausted
+    }
+    else if (pI->m_opcode == OP_RET) {
+      bool flag = true;
+      active_mask_t mask_temp = pI->get_active_mask();
+      // if (get_sid() == SID && warp_id == WID)
+      //     printf("pI mask %llx, record mask %llx\n", mask_temp.to_ullong(),
+      //             m_call_record[warp_id].back().second);
+      if (mask_temp.any()) {
+        for (int j = m_call_record[warp_id].size()-1; j >= 0; j--) {
+          bool ret_true = (m_call_record[warp_id][j].second & mask_temp).any();
+          if (ret_true) {
+            std::string mask1 = m_call_record[warp_id][j].second.to_string();
+            std::string mask2 = mask_temp.to_string();
+            if (mask1 >= mask2) {
+              for (unsigned k = 0; k < WARP_SIZE; k++) {
+                if (mask_temp.test(k) && m_call_record[warp_id][j].second.test(k)) {
+                  mask_temp.reset(k);
+                  m_call_record[warp_id][j].second.reset(k);
+                }
+              }
+              // m_call_record[warp_id][j].second = m_call_record[warp_id][j].second ^ mask_temp; // bug
+              // mask_temp.reset();
+            }
+            else {
+              for (unsigned k = 0; k < WARP_SIZE; k++) {
+                if (mask_temp.test(k) && m_call_record[warp_id][j].second.test(k)) {
+                  mask_temp.reset(k);
+                  m_call_record[warp_id][j].second.reset(k);
+                }
+              }
+            }
+            if (mask_temp.none()) {
+              break;
+            }
+          }
+        }
+      }
+
+      while (m_call_record[warp_id].back().second == 0) {
+        if (get_sid() == SID && warp_id == WID)
+          printf("pop 0x%llx\n", m_call_record[warp_id].back().first);
+        if (stall_all) {
+          m_free_reg_per_warp[warp_id] += reg_win;
+        }
+        m_call_record[warp_id].pop_back();
+        m_pair_record[warp_id].pop_back();
+      }
+      fflush(stdout);
+      return true;
+    }
+    else {
+      return true;
+    }
+    
+    return true; 
+  }
+  else if (kernel_info->m_tconfig->reg_win_mode == 9) {
+    if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
+      bool flag = false;
+      for (int i = 0; i < m_call_record[warp_id].size(); i++) {
+        if (pI->a_pc == m_call_record[warp_id][i].first) {
+          flag = true;
+          if ((m_call_record[warp_id][i].second & pI->get_active_mask()) != 0) {
+            printf("Wrong CALL pc: 0x%llx, mask: %llx&%llx on SM %u warp %u\n", 
+                    pI->a_pc, m_call_record[warp_id][i].second, pI->get_active_mask(), get_sid(), warp_id);
+            fflush(stdout);
+          }
+          assert((m_call_record[warp_id][i].second & pI->get_active_mask()) == 0);
+          m_call_record[warp_id][i].second |= pI->get_active_mask();
+          break;
+        }
+      }
+      if (!flag) {
+        total_func_call[warp_id]++;
+        active_mask_t mask_temp(pI->get_active_mask());
+        m_call_record[warp_id].push_back(std::make_pair(pI->a_pc, mask_temp));
+        m_window_per_warp[warp_id].back().reg_num = reg_win;
+        m_window_per_warp[warp_id].back().in_reg = true;
+        m_window_per_warp[warp_id].back().borrowed = -1;
+        if (m_free_reg_per_warp[warp_id] >= reg_win) {
+          m_window_per_warp[warp_id].back().used_own = reg_win;
+          m_free_reg_per_warp[warp_id] -= reg_win;
+          if (get_sid() == SID && warp_id == WID)
+            printf("0x%llx used own: %u\n", pI->a_pc, reg_win);
+        }
+        else {
+          func_call_spf[warp_id]++;
+          int reg_used = reg_win;
+          unsigned total_next_window_avail = 0;
+          unsigned borrow_from = (warp_id + 1) % (kernel_max_cta_per_shader * num_warps_per_cta);
+          total_next_window_avail += m_free_reg_per_warp[warp_id];
+          for (unsigned i = 0; i < m_window_per_warp[borrow_from].size(); i++) {
+            if (m_window_per_warp[borrow_from][i].borrowed == -1) {
+              total_next_window_avail += m_window_per_warp[borrow_from][i].reg_num;
+              if (get_sid() == SID && warp_id == WID)
+                printf("0x%llx borrowed from warp %u: %u\n", pI->a_pc, borrow_from, 
+                          m_window_per_warp[borrow_from][i].reg_num);
+            }
+            else {
+              printf("shader %u warp %u index %u reg_num %u borrowed by %u\n", 
+                      get_sid(), borrow_from, i, m_window_per_warp[borrow_from][i].reg_num, 
+                      m_window_per_warp[borrow_from][i].borrowed);
+              // assert(false);
+            }
+          }
+          if (reg_used > total_next_window_avail) {
+            total_next_window_avail += m_free_reg_per_warp[borrow_from];
+            printf("own left: %u\n", m_free_reg_per_warp[warp_id]);
+            printf("others left: %u on warp %u\n", m_free_reg_per_warp[borrow_from], borrow_from);
+            printf("reg_used: %u, total_next_window_avail: %u, in warp %u, shader %u\n", 
+                    reg_used, total_next_window_avail, warp_id, get_sid());
+            fflush(stdout);
+          }
+          assert(reg_used <= total_next_window_avail);
+          m_window_per_warp[warp_id].back().used_own = m_free_reg_per_warp[warp_id];
+          reg_used -= m_free_reg_per_warp[warp_id];
+          m_free_reg_per_warp[warp_id] = 0;
+          
+          for (unsigned i = 0; i < m_window_per_warp[borrow_from].size(); i++) {
+            if (m_window_per_warp[borrow_from][i].in_reg) {
+              reg_used -= m_window_per_warp[borrow_from][i].reg_num;
+              m_window_per_warp[borrow_from][i].in_reg = false;
+              for (unsigned j = 0; j < m_window_per_warp[borrow_from][i].stl.size(); j++) {
+                if (m_window_per_warp[borrow_from][i].stl[j] == NULL) {
+                  printf("inst is null when borrowing window warp %u, shader %u\n", 
+                          warp_id, get_sid());
+                }
+                m_spf_to_execute[warp_id].push_back(m_window_per_warp[borrow_from][i].stl[j]);
+              }
+              m_window_per_warp[warp_id].back().reg_num = reg_win;
+              m_window_per_warp[warp_id].back().in_reg = true;
+              m_window_per_warp[warp_id].back().borrowed = -1;
+              m_window_per_warp[warp_id].back().borrow.push_back(i);
+              m_window_per_warp[borrow_from].back().borrowed = m_window_per_warp[warp_id].size()-1;
+              // if (get_sid() == 9)
+              //   printf("CALL %u is borrowed by %u\n", borrow_from, warp_id);
+              fflush(stdout);
+            }
+            if (reg_used < 0) {
+              break;
+            }
+          }
+
+          // TODO: what if reg_used is still greater than 0?
+          // if (reg_used > 0) {
+          //   m_free_reg_per_warp[warp_id+1] -= reg_used;
+          //   m_window_per_warp[warp_id+1].back().borrowed_size = reg_used;
+          //   assert(m_free_reg_per_warp[warp_id+1] >= 0);
+          // }
+          // printf("func needs %d, but have %d left\n", reg_win, m_free_reg_per_warp[warp_id]);
+          // if (get_sid() == SID && warp_id == WID)
+          //   printf("alloc_record 0x%llx for warp %u: %u\n", next_inst->a_pc, warp_id, m_alloc_fail_record[warp_id]);
+        }
+      }
+      if (get_sid() == SID && warp_id == WID) {
+        for (unsigned i = 0; i < m_call_record[warp_id].size(); i++) {
+          printf("m_call_record[%u][%u]: <0x%llx %llx>\n", warp_id, i, 
+                  m_call_record[warp_id][i].first, m_call_record[warp_id][i].second.to_ullong());
+        }
+      }
+      
+      // fflush(stdout);
+      return true; // Ni: start spills&fills after regs exhausted
+    }
+    else if (pI->m_opcode == OP_RET) {
+      bool flag = true;
+      active_mask_t mask_temp = pI->get_active_mask();
+      // if (get_sid() == SID && warp_id == WID)
+      //     printf("pI mask %llx, record mask %llx\n", mask_temp.to_ullong(),
+      //             m_call_record[warp_id].back().second);
+      if (mask_temp.any()) {
+        for (int j = m_call_record[warp_id].size()-1; j >= 0; j--) {
+          bool ret_true = (m_call_record[warp_id][j].second & mask_temp).any();
+          if (ret_true) {
+            std::string mask1 = m_call_record[warp_id][j].second.to_string();
+            std::string mask2 = mask_temp.to_string();
+            if (mask1 >= mask2) {
+              for (unsigned k = 0; k < WARP_SIZE; k++) {
+                if (mask_temp.test(k) && m_call_record[warp_id][j].second.test(k)) {
+                  mask_temp.reset(k);
+                  m_call_record[warp_id][j].second.reset(k);
+                }
+              }
+              // m_call_record[warp_id][j].second = m_call_record[warp_id][j].second ^ mask_temp; // bug
+              // mask_temp.reset();
+            }
+            else {
+              for (unsigned k = 0; k < WARP_SIZE; k++) {
+                if (mask_temp.test(k) && m_call_record[warp_id][j].second.test(k)) {
+                  mask_temp.reset(k);
+                  m_call_record[warp_id][j].second.reset(k);
+                }
+              }
+            }
+            if (mask_temp.none()) {
+              break;
+            }
+          }
+        }
+      }
+
+      while (m_call_record[warp_id].back().second == 0) {
+      // if (m_call_record[warp_id].back().second == 0) {
+        if (get_sid() == SID && warp_id == WID)
+          printf("pop 0x%llx\n", m_call_record[warp_id].back().first);
+        m_call_record[warp_id].pop_back();
+        m_free_reg_per_warp[warp_id] += m_window_per_warp[warp_id].back().used_own;
+        if (get_sid() == SID && warp_id == WID)
+          printf("%llx pop window %u\n", pI->a_pc, m_window_per_warp[warp_id].size()-1);
+        m_window_per_warp[warp_id].pop_back();
+        assert(m_window_per_warp[warp_id].size() > 0);
+        // if (m_alloc_fail_record[warp_id] > 0) {
+        //   m_alloc_fail_record[warp_id]--;
+        //   if (get_sid() == SID && warp_id == WID)
+        //     printf("RET alloc_record 0x%llx for warp %u: %u\n", next_inst->a_pc, warp_id, m_alloc_fail_record[warp_id]);
+        // }
+        // else if (m_alloc_fail_record[warp_id] == 0) {
+        //   m_free_reg_per_warp[warp_id] += reg_win;
+        //   if (get_sid() == SID && warp_id == WID)
+        //     printf("0x%llx RET free reg left for warp %u: %u\n", next_inst->a_pc, warp_id, m_free_reg_per_warp[warp_id]);
+        // }
+      }
+      fflush(stdout);
+      return true;
+    }
+    else {
+      return true;
+    }
+    
+    return true; 
+  }
+  else {
     if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
       if (m_free_reg_number >= reg_win) {
         m_free_reg_number -= reg_win;
@@ -796,4 +2120,5 @@ bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, uns
   }
   // Will never calls this
   return false;
+    return true;
 }

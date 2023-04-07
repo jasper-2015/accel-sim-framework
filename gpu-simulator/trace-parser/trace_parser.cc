@@ -144,6 +144,7 @@ bool inst_trace_t::parse_from_string(std::string trace,
         warpid_tb;
   }
 
+  ss >> std::hex >> a_pc;
   ss >> std::hex >> m_pc;
   ss >> std::hex >> mask;
 
@@ -166,7 +167,7 @@ bool inst_trace_t::parse_from_string(std::string trace,
   }
 
   // Ni
-  // ss >> mem_local_reg;
+  ss >> mem_local_reg;
 
   // parse mem info
   unsigned address_mode = 0;
@@ -356,6 +357,14 @@ kernel_trace_t *trace_parser::parse_kernel_info(
         sscanf(line.c_str(), "-appwin =%d", &kernel_info->appwin);
       } else if (string1 == "kerwin") {
         sscanf(line.c_str(), "-kerwin =%d", &kernel_info->kerwin);
+      }
+      else if (string1 == "ker_local_win") {
+        sscanf(line.c_str(), "-ker_local_win = %d", &kernel_info->ker_local_win);
+      }
+      else if (string1 == "max_reg_win") {
+        sscanf(line.c_str(), "-max_reg_win = %d", &kernel_info->max_ker_win);
+        printf("max_ker_win: %d\n", kernel_info->max_ker_win);
+        fflush(stdout);
       }
       std::cout << line << std::endl;
       continue;

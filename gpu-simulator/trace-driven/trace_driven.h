@@ -39,6 +39,10 @@
 #include "abstract_hardware_model.h"
 #include "gpgpu-sim/shader.h"
 
+// Ni
+#define SID 19
+#define WID 25
+
 class trace_function_info : public function_info {
  public:
   trace_function_info(const struct gpgpu_ptx_sim_info &info,
@@ -95,7 +99,8 @@ class trace_kernel_info_t : public kernel_info_t {
                       trace_function_info *m_function_info,
                       trace_parser *parser, class trace_config *config,
                       kernel_trace_t *kernel_trace_info,
-                      unsigned int appwin, unsigned int kerwin);
+                      unsigned int appwin, unsigned int kerwin,
+                      unsigned int ker_local_win);
 
   void get_next_threadblock_traces(
       std::vector<std::vector<inst_trace_t> *> threadblock_traces);
@@ -111,6 +116,7 @@ class trace_kernel_info_t : public kernel_info_t {
   void set_launched() { m_was_launched = true; }
   unsigned m_appwin;
   unsigned m_kerwin;
+  unsigned m_ker_local_win;
   trace_config *m_tconfig;
  private:
   const std::unordered_map<std::string, OpcodeChar> *OpcodeMap;
@@ -196,6 +202,17 @@ class trace_simt_core_cluster : public simt_core_cluster {
   virtual void create_shader_core_ctx();
 };
 
+struct reg_window
+{
+  std::vector<const warp_inst_t*> stl;
+  std::vector<const warp_inst_t*> ldl;
+  std::vector<unsigned> borrow;
+  int borrowed;
+  unsigned used_own;
+  unsigned reg_num;
+  bool in_reg;
+};
+
 class trace_shader_core_ctx : public shader_core_ctx {
  public:
   virtual bool can_issue_1block(kernel_info_t &kernel);
@@ -211,18 +228,53 @@ class trace_shader_core_ctx : public shader_core_ctx {
     create_schedulers();
     create_exec_pipeline();
     // TODO: need to split into subcore
-    m_free_reg_number = 512 * 4;
+    m_free_reg_number = m_config->gpgpu_shader_registers / 32;
     sid = shader_id;
     m_depwin = 0;
     m_dep_table.resize(m_config->max_warps_per_shader);
+    m_free_reg_per_warp.resize(m_config->max_warps_per_shader);
+    m_call_record.resize(m_config->max_warps_per_shader);
+    m_pair_record.resize(m_config->max_warps_per_shader);
+    m_start_ker.resize(m_config->max_warps_per_shader);
+    m_ker_fail.resize(m_config->max_warps_per_shader);
+    m_warp_stall.resize(m_config->max_warps_per_shader);
+    m_warp_spf.resize(m_config->max_warps_per_shader);
+
+    m_window_per_warp.resize(m_config->max_warps_per_shader);
+    m_spf_to_execute.resize(m_config->max_warps_per_shader);
+
+    m_warp_regchunk.resize((m_config->gpgpu_shader_registers / 32) / m_config->gpgpu_regchunk);
+    m_warp_stall_warp.resize(m_config->max_warps_per_shader);
+
+    num_warps_per_cta = 0;
+    num_reg_left = 0;
+    stall_all = false;
+    highmark_reg = 0;
+    
     for (unsigned k = 0; k < m_config->max_warps_per_shader; ++k) {
       // 0 for if allowed to issue, 1 for depth window, 2 for waiting for barriers
-      m_dep_table[k].resize(3);
+      m_dep_table[k].resize(4);
       m_dep_table[k][0] = 0;
       m_dep_table[k][1] = 0;
       // not waiting for barriers, fine to go, wait for barriers, not to go
       m_dep_table[k][2] = 1;
+
+      // absolute Address of the last m_dep_table update
+      m_dep_table[k][3] = 0;
+
+      m_free_reg_per_warp[k] = 0;
+
+      m_start_ker[k] = false;
+      m_ker_fail[k] = false;
+      m_warp_stall[k] = false;
+      m_warp_spf[k] = false;
     }
+
+    for (unsigned k = 0; k < m_warp_regchunk.size(); k++) {
+      m_warp_regchunk[k] = -1; // Empty
+    }
+    num_chunk_per_warp = 0;
+    m_freelist_start = 0;
   }
 
   virtual void checkExecutionStatusAndUpdate(warp_inst_t &inst, unsigned t,
@@ -248,6 +300,7 @@ class trace_shader_core_ctx : public shader_core_ctx {
                           const active_mask_t &active_mask, unsigned warp_id,
                           unsigned sch_id);
   virtual bool has_register_space(const warp_inst_t *pI, unsigned warp_id, unsigned long long curr_cycle);
+  virtual void window_kickoff(const warp_inst_t *pI, unsigned warp_id);
 
   unsigned get_sid() { return sid; }
 
@@ -255,6 +308,31 @@ class trace_shader_core_ctx : public shader_core_ctx {
   unsigned m_depwin;
 
   std::vector<std::vector<int> > m_dep_table;
+
+  // Ni
+  std::vector<int> m_free_reg_per_warp;
+  std::vector<std::vector<std::pair<unsigned, active_mask_t>>> m_call_record;
+  std::vector<std::vector<bool>> m_pair_record;
+  std::vector<bool> m_start_ker;
+  std::vector<bool> m_ker_fail;
+  std::vector<bool> m_warp_stall;
+  std::vector<bool> m_warp_spf;
+  unsigned num_warps_per_cta;
+  int num_reg_left;
+  bool stall_all;
+  unsigned highmark_reg;
+
+  std::vector<std::vector<reg_window>> m_window_per_warp;
+  std::vector<std::vector<const warp_inst_t*>> m_spf_to_execute;
+  unsigned static_reg_per_warp;
+
+  // bad
+  std::vector<int> m_warp_regchunk;
+  std::vector<unsigned> m_freelist;
+  unsigned num_chunk_per_warp;
+  std::vector<unsigned> m_stalled_warp;
+  std::vector<std::vector<std::pair<unsigned, unsigned>>> m_warp_stall_warp; // warp_id stalled, how many chunks borrowed
+  unsigned m_freelist_start;
 
  private:
   void init_traces(unsigned start_warp, unsigned end_warp,

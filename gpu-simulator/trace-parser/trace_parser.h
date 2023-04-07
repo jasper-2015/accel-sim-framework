@@ -50,6 +50,7 @@ struct inst_trace_t {
   inst_trace_t(const inst_trace_t &b);
 
   unsigned m_pc;
+  unsigned a_pc; // absolute pc
   unsigned mask;
   unsigned reg_dsts_num;
   unsigned reg_dest[MAX_DST];
@@ -62,7 +63,7 @@ struct inst_trace_t {
   bool is_relo_call;
 
     // Ni
-  // unsigned mem_local_reg;
+  unsigned mem_local_reg;
 
   bool parse_from_string(std::string trace, unsigned tracer_version);
 
@@ -98,6 +99,8 @@ struct kernel_trace_t {
   unsigned long long local_base_addr;
   unsigned appwin;
   unsigned kerwin;
+  unsigned ker_local_win;
+  unsigned max_ker_win;
   // Reference to open filestream
   std::ifstream *ifs;
 };
