@@ -71,10 +71,10 @@ L1Set10MB:
 L1Set50MB:
     extra_params: "-gpgpu_adaptive_cache_config 0 -gpgpu_cache:dl1  S:1600:128:64,L:T:m:L:L,A:512:8,16:0,32 -gpgpu_unified_l1d_size 51200"
 
-Ideal_75:
+Static_concurrency_nolimit:
     extra_params: ""
 
-Highmark_75:
+Highmark_concurrency_nolimit:
     extra_params: ""
 
 90s:

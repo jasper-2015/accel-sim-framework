@@ -201,7 +201,19 @@ trace_kernel_info_t *create_kernel_info( kernel_trace_t* kernel_trace_info,
 
   gpgpu_ptx_sim_info info;
   info.smem = kernel_trace_info->shmem;
-  info.regs = kernel_trace_info->nregs;
+  if (config->reg_win_mode == 5) {
+    if ((kernel_trace_info->ker_local_win + 16) > 
+          kernel_trace_info-> max_reg_win_single) {
+      info.regs = kernel_trace_info->ker_local_win + 16;
+    }
+    else {
+      info.regs = kernel_trace_info->max_reg_win_single;
+    }
+  }
+  else {
+    info.regs = kernel_trace_info->nregs;
+  }
+  assert(info.regs != 0);
   dim3 gridDim(kernel_trace_info->grid_dim_x, kernel_trace_info->grid_dim_y, kernel_trace_info->grid_dim_z);
   dim3 blockDim(kernel_trace_info->tb_dim_x, kernel_trace_info->tb_dim_y, kernel_trace_info->tb_dim_z);
   trace_function_info *function_info =

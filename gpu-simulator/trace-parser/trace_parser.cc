@@ -366,6 +366,11 @@ kernel_trace_t *trace_parser::parse_kernel_info(
         printf("max_ker_win: %d\n", kernel_info->max_ker_win);
         fflush(stdout);
       }
+      else if (string1 == "max_reg_win_single") {
+        sscanf(line.c_str(), "-max_reg_win_single = %d", &kernel_info->max_reg_win_single);
+        printf("max_reg_win_single: %d\n", kernel_info->max_reg_win_single);
+        fflush(stdout);
+      }
       std::cout << line << std::endl;
       continue;
     }
