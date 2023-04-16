@@ -71,10 +71,10 @@ L1Set10MB:
 L1Set50MB:
     extra_params: "-gpgpu_adaptive_cache_config 0 -gpgpu_cache:dl1  S:1600:128:64,L:T:m:L:L,A:512:8,16:0,32 -gpgpu_unified_l1d_size 51200"
 
-Static_concurrency_limitmax:
+Static_concurrency_limitmax_noinline:
     extra_params: ""
 
-Highmark_concurrency_nolimit:
+Highmark_concurrency_nolimit_noinline:
     extra_params: ""
 
 90s:
@@ -83,7 +83,7 @@ Highmark_concurrency_nolimit:
 Fetch_Bandwidth_11_4:
     extra_params: ""
 
-Ideal_cta:
+Ideal_noinline:
     extra_params: ""
 
 SWL_2warp:

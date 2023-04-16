@@ -780,9 +780,9 @@ GPUFuncBenchmark:
     exec_dir: "$GPUAPPS_ROOT/bin/$CUDA_VERSION/release/"
     data_dirs: "$GPUAPPS_ROOT/data_dirs/"
     execs:
-        # - pta:
-        #     - args: 
-        #       accel-sim-mem: 20G
+        - pta:
+            - args: 
+              accel-sim-mem: 20G
         # - dmr:
         #     - args: 
         #       accel-sim-mem: 5G
@@ -807,9 +807,9 @@ GPUFuncBenchmark:
         # - coli:
         #     - args:
         #       accel-sim-mem: 5G
-        - stut:
-            - args:
-              accel-sim-mem: 5G
+        # - stut:
+        #     - args:
+        #       accel-sim-mem: 5G
 
 GPUFuncBenchmark_test:
     exec_dir: "$GPUAPPS_ROOT/bin/$CUDA_VERSION/release/"
