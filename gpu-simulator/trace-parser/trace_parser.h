@@ -102,6 +102,7 @@ struct kernel_trace_t {
   unsigned ker_local_win;
   unsigned max_ker_win;
   unsigned max_reg_win_single;
+  unsigned bar;
   // Reference to open filestream
   std::ifstream *ifs;
 };

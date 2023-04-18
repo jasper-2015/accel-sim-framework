@@ -749,7 +749,8 @@ void trace_shader_core_ctx::init_traces(unsigned start_warp, unsigned end_warp,
   //   static_reg_per_warp = 2048 / (total_cta * num_warps_per_cta);
   // }
 
-  num_reg_left = (m_config->gpgpu_shader_registers / 32) - ((kernel_info->ker_local_win + 16) * kernel_max_cta_per_shader * num_warps_per_cta);
+  // num_reg_left = (m_config->gpgpu_shader_registers / 32) - ((kernel_info->ker_local_win + 16) * kernel_max_cta_per_shader * num_warps_per_cta);
+  num_reg_left = m_config->gpgpu_shader_registers / 32;
   unsigned num_running_warp = 0;
   if (num_reg_left < 0) {
     num_running_warp = 0;
@@ -757,7 +758,7 @@ void trace_shader_core_ctx::init_traces(unsigned start_warp, unsigned end_warp,
   else {
     if (trace_kernel.m_tconfig->reg_win_mode == 8) {
       if (kernel_info->max_ker_win > 0) {
-        num_running_warp = num_reg_left / kernel_info->max_ker_win;
+        num_running_warp = num_reg_left / (kernel_info->max_ker_win + kernel_info->ker_local_win + 16);
       }
       else {
         num_running_warp = kernel_max_cta_per_shader * num_warps_per_cta;
@@ -765,14 +766,14 @@ void trace_shader_core_ctx::init_traces(unsigned start_warp, unsigned end_warp,
     }
     else if (trace_kernel.m_tconfig->reg_win_mode == 10) {
       if (kernel_info->max_reg_win_single > (kernel_info->ker_local_win + 16)) {
-        num_running_warp = num_reg_left / (kernel_info->max_reg_win_single - (kernel_info->ker_local_win + 16));
-        if (num_running_warp > kernel_max_cta_per_shader * num_warps_per_cta) {
-          num_running_warp = kernel_max_cta_per_shader * num_warps_per_cta;
-        }
+        num_running_warp = num_reg_left / kernel_info->max_reg_win_single;
       }
       else {
-        num_running_warp = kernel_max_cta_per_shader * num_warps_per_cta;
+        num_running_warp = num_reg_left / (kernel_info->ker_local_win + 16);
       }
+    }
+    if (num_running_warp > kernel_max_cta_per_shader * num_warps_per_cta) {
+      num_running_warp = kernel_max_cta_per_shader * num_warps_per_cta;
     }
   }
   
@@ -783,15 +784,33 @@ void trace_shader_core_ctx::init_traces(unsigned start_warp, unsigned end_warp,
   else {
     stall_all = false;
   }
-  
-  for (unsigned i = start_warp; i < end_warp; i++) {
-    if (i < num_running_warp) {
-      m_warp_stall[i] = false;
+  assert(!stall_all);
+
+  if (kernel_info->bar) {
+    if (end_warp <= num_running_warp) {
+      for (unsigned i = start_warp; i < end_warp; i++) {
+        m_warp_stall[i] = false;
+      }
     }
     else {
-      m_warp_stall[i] = true;
-      if (get_sid() == SID)
-        printf("stall warp %u\n", i);
+      for (unsigned i = start_warp; i < end_warp; i++) {
+        m_warp_stall[i] = true;
+        if (get_sid() == SID)
+          printf("stall warp %u\n", i);
+      }
+    }
+  }
+  
+  else {
+    for (unsigned i = start_warp; i < end_warp; i++) {
+      if (i < num_running_warp) {
+        m_warp_stall[i] = false;
+      }
+      else {
+        m_warp_stall[i] = true;
+        if (get_sid() == SID)
+          printf("stall warp %u\n", i);
+      }
     }
   }
 
@@ -807,17 +826,19 @@ void trace_shader_core_ctx::init_traces(unsigned start_warp, unsigned end_warp,
     for (unsigned i = start_warp; i < end_warp; i++) {
       if (stall_all) {
         m_free_reg_per_warp[i] = num_reg_left;
+        abort();
       }
       else {
         if (kernel_info->max_reg_win_single > (kernel_info->ker_local_win + 16)) {
-          m_free_reg_per_warp[i] = kernel_info->max_reg_win_single - (kernel_info->ker_local_win + 16);
+          m_free_reg_per_warp[i] = kernel_info->max_reg_win_single;
         }
         else {
-          m_free_reg_per_warp[i] = 0;
+          m_free_reg_per_warp[i] = kernel_info->ker_local_win + 16;
         }
         if ((num_reg_left / num_running_warp) > m_free_reg_per_warp[i]) {
           m_free_reg_per_warp[i] = num_reg_left / num_running_warp;
         }
+        m_free_reg_per_warp[i] -= (kernel_info->ker_local_win + 16);
       }
     }
     if (get_sid() == 0) {
@@ -829,7 +850,8 @@ void trace_shader_core_ctx::init_traces(unsigned start_warp, unsigned end_warp,
   // Used for 8
   if (trace_kernel.m_tconfig->reg_win_mode == 8) {
     for (unsigned i = start_warp; i < end_warp; i++) {
-      m_free_reg_per_warp[i] = num_reg_left;
+      // m_free_reg_per_warp[i] = num_reg_left;
+      m_free_reg_per_warp[i] = kernel_info->max_ker_win;
     }
   }
 
@@ -1861,21 +1883,21 @@ bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, uns
   }
   else if (kernel_info->m_tconfig->reg_win_mode == 8) {
     if (m_warp_stall[warp_id]) {
-      bool release_flag = false;
-      unsigned cta_in_shader = warp_id / num_warps_per_cta;
-      for (unsigned i = 0; i < num_warps_per_cta; i++) {
-        if (m_warp[cta_in_shader*num_warps_per_cta+i]->waiting()) {
-          release_flag = true;  // release but do spill&fill
-          break;
-        }
+      // bool release_flag = false;
+      // unsigned cta_in_shader = warp_id / num_warps_per_cta;
+      // for (unsigned i = 0; i < num_warps_per_cta; i++) {
+      //   if (m_warp[cta_in_shader*num_warps_per_cta+i]->waiting()) {
+      //     release_flag = true;  // release but do spill&fill
+      //     break;
+      //   }
+      // }
+      // if (!release_flag) {
+      if (get_sid() == SID) {
+        printf("warp %u is stuck\n", warp_id);
+        fflush(stdout);
       }
-      if (!release_flag) {
-        if (get_sid() == SID) {
-          printf("warp %u is stuck\n", warp_id);
-          fflush(stdout);
-        }
         return false; // The warp is stalled
-      }
+      // }
     }
     if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
       bool flag = false;
@@ -1899,6 +1921,7 @@ bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, uns
         if (m_warp_stall[warp_id]) {
           func_call_spf[warp_id]++;
           m_pair_record[warp_id].push_back(true);
+          abort();
         }
         else {
           if (stall_all) {
@@ -1909,6 +1932,7 @@ bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, uns
             else {
               m_pair_record[warp_id].push_back(true);
             }
+            abort();
           }
           else {
             m_pair_record[warp_id].push_back(false);
@@ -1967,6 +1991,7 @@ bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, uns
           printf("pop 0x%llx\n", m_call_record[warp_id].back().first);
         if (stall_all) {
           m_free_reg_per_warp[warp_id] += reg_win;
+          abort();
         }
         m_call_record[warp_id].pop_back();
         m_pair_record[warp_id].pop_back();
@@ -2157,21 +2182,21 @@ bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, uns
   }
   else if (kernel_info->m_tconfig->reg_win_mode == 10) {
     if (m_warp_stall[warp_id]) {
-      bool release_flag = false;
-      unsigned cta_in_shader = warp_id / num_warps_per_cta;
-      for (unsigned i = 0; i < num_warps_per_cta; i++) {
-        if (m_warp[cta_in_shader*num_warps_per_cta+i]->waiting()) {
-          release_flag = true;  // release but do spill&fill
-          break;
-        }
+      // bool release_flag = false;
+      // unsigned cta_in_shader = warp_id / num_warps_per_cta;
+      // for (unsigned i = 0; i < num_warps_per_cta; i++) {
+      //   if (m_warp[cta_in_shader*num_warps_per_cta+i]->waiting()) {
+      //     release_flag = true;  // release but do spill&fill
+      //     break;
+      //   }
+      // }
+      // if (!release_flag) {
+      if (get_sid() == SID) {
+        printf("warp %u is stuck\n", warp_id);
+        fflush(stdout);
       }
-      if (!release_flag) {
-        if (get_sid() == SID) {
-          printf("warp %u is stuck\n", warp_id);
-          fflush(stdout);
-        }
         return false; // The warp is stalled
-      }
+      // }
     }
     if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
       bool flag = false;
@@ -2202,6 +2227,7 @@ bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, uns
           if (m_warp_stall[warp_id]) {
             func_call_spf[warp_id]++;
             m_pair_record[warp_id].push_back(true);
+            abort();
           }
           else {
             if (stall_all) {
@@ -2213,6 +2239,7 @@ bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, uns
                 func_call_spf[warp_id]++;
                 m_pair_record[warp_id].push_back(true);
               }
+              abort();
             }
             else {
               func_call_spf[warp_id]++;
