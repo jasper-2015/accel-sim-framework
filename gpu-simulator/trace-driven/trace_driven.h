@@ -231,7 +231,7 @@ class trace_shader_core_ctx : public shader_core_ctx {
     create_exec_pipeline();
     // TODO: need to split into subcore
     // m_free_reg_number = m_config->gpgpu_shader_registers / 32;
-    m_free_reg_number = 8192;
+    m_free_reg_number = 2048;
     sid = shader_id;
     m_depwin = 0;
     m_dep_table.resize(m_config->max_warps_per_shader);
