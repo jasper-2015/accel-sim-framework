@@ -74,6 +74,9 @@ L1Set50MB:
 Static_concurrency_nolimit:
     extra_params: ""
 
+Static_concurrency_limitmax:
+    extra_params: ""
+
 Highmark_concurrency_nolimit:
     extra_params: ""
 
