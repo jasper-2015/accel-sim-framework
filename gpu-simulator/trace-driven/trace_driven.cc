@@ -92,7 +92,8 @@ trace_kernel_info_t::trace_kernel_info_t(dim3 gridDim, dim3 blockDim,
                                          class trace_config *config,
                                          kernel_trace_t *kernel_trace_info,
                                          unsigned int appwin, unsigned int kerwin,
-                                         unsigned int ker_local_win)
+                                         unsigned int ker_local_win,
+                                         unsigned int max_win_single)
     : kernel_info_t(gridDim, blockDim, m_function_info) {
   m_parser = parser;
   m_tconfig = config;
@@ -101,6 +102,7 @@ trace_kernel_info_t::trace_kernel_info_t(dim3 gridDim, dim3 blockDim,
   m_appwin = appwin;
   m_kerwin = kerwin;
   m_ker_local_win = ker_local_win;
+  m_max_win_single = max_win_single;
 
   // resolve the binary version
   if (kernel_trace_info->binary_verion == AMPERE_RTX_BINART_VERSION ||
@@ -751,7 +753,7 @@ void trace_shader_core_ctx::init_traces(unsigned start_warp, unsigned end_warp,
 
   // num_reg_left = (m_config->gpgpu_shader_registers / 32) - ((kernel_info->ker_local_win + 16) * kernel_max_cta_per_shader * num_warps_per_cta);
   num_reg_left = m_config->gpgpu_shader_registers / 32;
-  unsigned num_running_warp = 0;
+  unsigned num_running_warp = kernel_max_cta_per_shader * num_warps_per_cta;
   if (num_reg_left < 0) {
     num_running_warp = 0;
   }
@@ -1113,8 +1115,10 @@ bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, uns
     // Why align_to_chunk?
     if (pI->m_opcode == OP_CALL && pI->m_is_relo_call) {
       reg_win = pI->m_funwin + output_reg;
+      // reg_win = kernel_info->m_max_win_single + output_reg;
     } else if (pI->m_opcode == OP_RET) {
       reg_win = pI->m_funwin + output_reg;
+      // reg_win = kernel_info->m_max_win_single + output_reg;
     } else {
       return true;
     }
@@ -1446,6 +1450,8 @@ bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, uns
         }
       }
       if (!flag) {
+        if (SID == get_sid())
+          printf("Reserve %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
         total_func_call[warp_id]++;
         active_mask_t mask_temp(pI->get_active_mask());
         m_call_record[warp_id].push_back(std::make_pair(pI->a_pc, mask_temp));
@@ -1512,6 +1518,8 @@ bool trace_shader_core_ctx::has_register_space(const warp_inst_t *next_inst, uns
       }
 
       while (m_call_record[warp_id].back().second == 0) {
+        if (SID == get_sid())
+          printf("Release %u number of registers at cycle %llu on SM %u\n", reg_win, curr_cycle, get_sid());
         if (get_sid() == SID && warp_id == WID)
           printf("pop 0x%llx\n", m_call_record[warp_id].back().first);
         m_call_record[warp_id].pop_back();

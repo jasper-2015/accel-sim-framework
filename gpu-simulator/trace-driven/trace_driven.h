@@ -40,8 +40,8 @@
 #include "gpgpu-sim/shader.h"
 
 // Ni
-#define SID 19
-#define WID 25
+#define SID 0
+#define WID 0
 
 class trace_function_info : public function_info {
  public:
@@ -100,7 +100,8 @@ class trace_kernel_info_t : public kernel_info_t {
                       trace_parser *parser, class trace_config *config,
                       kernel_trace_t *kernel_trace_info,
                       unsigned int appwin, unsigned int kerwin,
-                      unsigned int ker_local_win);
+                      unsigned int ker_local_win, 
+                      unsigned int max_win_single);
 
   void get_next_threadblock_traces(
       std::vector<std::vector<inst_trace_t> *> threadblock_traces);
@@ -117,6 +118,7 @@ class trace_kernel_info_t : public kernel_info_t {
   unsigned m_appwin;
   unsigned m_kerwin;
   unsigned m_ker_local_win;
+  unsigned m_max_win_single;
   trace_config *m_tconfig;
  private:
   const std::unordered_map<std::string, OpcodeChar> *OpcodeMap;
@@ -228,7 +230,8 @@ class trace_shader_core_ctx : public shader_core_ctx {
     create_schedulers();
     create_exec_pipeline();
     // TODO: need to split into subcore
-    m_free_reg_number = m_config->gpgpu_shader_registers / 32;
+    // m_free_reg_number = m_config->gpgpu_shader_registers / 32;
+    m_free_reg_number = 8192;
     sid = shader_id;
     m_depwin = 0;
     m_dep_table.resize(m_config->max_warps_per_shader);
