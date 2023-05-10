@@ -789,24 +789,24 @@ GPUFuncBenchmark:
         # - lulesh:
         #     - args:
         #       accel-sim-mem: 5G
-        - cfd:
-            - args: 
-              accel-sim-mem: 5G
-        - traf:
-            - args:
-              accel-sim-mem: 5G
-        - gol:
-            - args:
-              accel-sim-mem: 5G
+        # - cfd:
+        #     - args: 
+        #       accel-sim-mem: 5G
+        # - traf:
+        #     - args:
+        #       accel-sim-mem: 5G
+        # - gol:
+        #     - args:
+        #       accel-sim-mem: 5G
         # - ray:
         #     - args:
         #       accel-sim-mem: 5G
-        - nbd:
-            - args:
-              accel-sim-mem: 5G
-        - coli:
-            - args:
-              accel-sim-mem: 5G
+        # - nbd:
+        #     - args:
+        #       accel-sim-mem: 5G
+        # - coli:
+        #     - args:
+        #       accel-sim-mem: 5G
         # - stut:
         #     - args:
         #       accel-sim-mem: 5G
