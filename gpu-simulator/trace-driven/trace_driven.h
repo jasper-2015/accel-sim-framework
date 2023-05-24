@@ -40,8 +40,8 @@
 #include "gpgpu-sim/shader.h"
 
 // Ni
-#define SID 0
-#define WID 0
+#define SID 16
+#define WID 12
 
 class trace_function_info : public function_info {
  public:
@@ -120,7 +120,7 @@ class trace_kernel_info_t : public kernel_info_t {
   unsigned m_ker_local_win;
   unsigned m_max_win_single;
   trace_config *m_tconfig;
- private:
+//  private:
   const std::unordered_map<std::string, OpcodeChar> *OpcodeMap;
   trace_parser *m_parser;
   kernel_trace_t *m_kernel_trace_info;
@@ -140,6 +140,7 @@ class trace_config {
   char *get_traces_filename() { return g_traces_filename; }
 
   unsigned reg_win_mode;
+  unsigned lowmark_window_multiple;
 
  private:
   unsigned int_latency, fp_latency, dp_latency, sfu_latency, tensor_latency;
@@ -244,15 +245,22 @@ class trace_shader_core_ctx : public shader_core_ctx {
     m_warp_spf.resize(m_config->max_warps_per_shader);
 
     m_window_per_warp.resize(m_config->max_warps_per_shader);
-    m_spf_to_execute.resize(m_config->max_warps_per_shader);
 
     m_warp_regchunk.resize((m_config->gpgpu_shader_registers / 32) / m_config->gpgpu_regchunk);
     m_warp_stall_warp.resize(m_config->max_warps_per_shader);
+
+    m_win_record.resize(m_config->max_warps_per_shader);
+    m_reg_stack_map.resize(m_config->max_warps_per_shader);
+    m_spf_to_execute.resize(m_config->max_warps_per_shader);
 
     num_warps_per_cta = 0;
     num_reg_left = 0;
     stall_all = false;
     highmark_reg = 0;
+    reg_next = 256; // start from reg 256?
+    stack_start = 0xfff000;
+    apc_start = 0x0;
+    pc_start = 0x0;
     
     for (unsigned k = 0; k < m_config->max_warps_per_shader; ++k) {
       // 0 for if allowed to issue, 1 for depth window, 2 for waiting for barriers
@@ -326,8 +334,19 @@ class trace_shader_core_ctx : public shader_core_ctx {
   unsigned highmark_reg;
 
   std::vector<std::vector<reg_window>> m_window_per_warp;
-  std::vector<std::vector<const warp_inst_t*>> m_spf_to_execute;
   unsigned static_reg_per_warp;
+
+  // Wrap-around window spills
+  // warp, function id, local/output, <#regs, in reg?>
+  std::vector<std::vector<std::vector<std::pair<unsigned, bool>>>> m_win_record;
+  // warp, sub-window, inst string <stack, mask>
+  std::vector<std::vector<std::pair<unsigned, unsigned long>>> m_reg_stack_map;
+  unsigned reg_next;
+  uint64_t stack_start;
+  uint64_t apc_start;
+  uint64_t pc_start;
+  // warp, sub-window, raw inst
+  std::vector<std::queue<char*>> m_spf_to_execute;
 
   // bad
   std::vector<int> m_warp_regchunk;
